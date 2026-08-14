@@ -129,8 +129,10 @@ Ela cruza duas fontes e não depende do `gh` CLI:
 - **GitHub** — os PRs **abertos** dos repositórios que você listar. A credencial é pedida ao
   próprio git (`git credential fill`), ou seja, a mesma que o seu `git push` já usa: nada é
   digitado, nada é guardado por esta ferramenta.
-- **OpenProject** (opcional) — os work packages de uma *query salva*, de onde saem o tipo, o
-  status e o campo de build. Sem ele a aba funciona igual, deduzindo o tipo do título do PR.
+- **OpenProject** (opcional) — os work packages **dos números de tarefa encontrados nos PRs**,
+  buscados pelo filtro `id` da API v3, de onde saem o tipo, o status e o campo de build. Sem ele
+  a aba funciona igual, deduzindo o tipo do título do PR. Campos personalizados são lidos tanto
+  do corpo quanto de `_links` — listas e opções só aparecem lá.
 
 | Situação | Significa |
 | -------- | --------- |
@@ -147,6 +149,30 @@ a principal, outra para a produção, e uma terceira para PRs abertos contra out
 **Escopo desta versão: só PR aberto.** O que já foi mergeado sai do radar. Por isso a pendência
 se chama *sem PR aberto para produção* e não *não está na produção* — para saber isso, use a
 aba git, que lê o histórico e não depende de PR nenhum.
+
+### Os campos
+
+| Campo | O que é |
+| ----- | ------- |
+| **Repositorios** | `org/repo` separados por vírgula **ou** o caminho de um clone — nesse caso o `org/repo` é descoberto pelo remote `origin`. Vazio usa o repositório da aba git. |
+| **Query salva (id)** | **opcional.** O número que aparece na URL do gerenciador como `?query_id=1234` — a visão já filtrada do seu time, para trazer também tarefas que não têm PR aberto. As tarefas dos PRs são buscadas pelo número, independente dela. |
+| **Parado apos (dias)** | quantos dias sem **nenhuma** atualização no PR para ele ser marcado como PARADO. |
+| **Conta do GitHub** | qual credencial usar (veja abaixo). |
+
+### Qual conta do GitHub ele usa
+
+Quem escolhe a conta é o **caminho `org/repo`** enviado ao `git credential fill` — é assim que
+o git resolve máquinas com mais de uma conta (`credential.https://github.com/<org>.username`
+no seu gitconfig). Por isso o campo Repositórios importa: um caminho de pasta no lugar de
+`org/repo` faz o git cair no helper padrão e devolver a conta errada.
+
+O seletor **Conta do GitHub** oferece:
+
+- `(automatica pelo repositorio)` — o certo em quase todo caso: pergunta ao git usando o `org/repo`;
+- `(padrao do git)` — sem caminho, o que a máquina responder por padrão;
+- as contas encontradas no Gerenciador de Credenciais do Windows, para forçar uma delas.
+
+A conta efetivamente usada aparece em verde ao lado do seletor e no log, a cada carga.
 
 ### Configuração
 

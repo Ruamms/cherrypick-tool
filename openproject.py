@@ -131,6 +131,51 @@ class OpenProject(object):
         resultados = dados.get("_embedded", {}).get("results", {})
         return resultados.get("_embedded", {}).get("elements", [])
 
+    def work_packages_por_id(self, ids, tamanho_lote=100):
+        """Busca work packages por uma lista de numeros, em lotes.
+
+        Usa o filtro `id` da API v3, o que dispensa query salva e cobre tarefa
+        de qualquer projeto - o que interessa e o numero que veio do PR.
+        """
+        achados = []
+        ids = [str(i) for i in ids if str(i).strip()]
+        for inicio in range(0, len(ids), tamanho_lote):
+            lote = ids[inicio:inicio + tamanho_lote]
+            filtros = json.dumps([{"id": {"operator": "=", "values": lote}}])
+            consulta = urllib.parse.urlencode({
+                "filters": filtros, "pageSize": str(len(lote)),
+            })
+            dados = self._get("/api/v3/work_packages?" + consulta)
+            achados.extend(dados.get("_embedded", {}).get("elements", []))
+        return achados
+
+    def campos_customizados(self, wp, nomes):
+        """{nome legivel: valor} dos custom fields preenchidos.
+
+        Valores simples ficam no corpo; listas e opcoes ficam em `_links`, com
+        o texto em `title` - ler so o corpo perderia metade dos casos.
+        """
+        valores = {}
+        for chave, bruto in wp.items():
+            if not chave.startswith("customField"):
+                continue
+            valor = bruto.get("raw") if isinstance(bruto, dict) else bruto
+            if isinstance(valor, str):
+                valor = valor.strip()
+            if valor in (None, "", [], {}):
+                continue
+            valores[nomes.get(chave, chave)] = valor
+        for chave, no in (wp.get("_links") or {}).items():
+            if not chave.startswith("customField"):
+                continue
+            if isinstance(no, list):
+                titulos = [n.get("title") for n in no if isinstance(n, dict) and n.get("title")]
+                if titulos:
+                    valores[nomes.get(chave, chave)] = ", ".join(titulos)
+            elif isinstance(no, dict) and no.get("title"):
+                valores[nomes.get(chave, chave)] = no["title"]
+        return valores
+
     def comentarios(self, wp_id):
         """Texto de todos os comentarios/atividades de um work package."""
         dados = self._get("/api/v3/work_packages/%s/activities" % wp_id)

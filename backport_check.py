@@ -163,6 +163,37 @@ def commit_do_pr(repo, ref_main, numero):
     return sha, assunto, data
 
 
+def resolver_repos(texto, repo_local, log):
+    """Aceita 'org/repo' ou o caminho de um clone; devolve sempre 'org/repo'.
+
+    Caminho de pasta e resolvido pelo remote origin daquele clone - foi o engano
+    mais facil de cometer, e e tambem o que faz o git escolher a conta certa.
+    """
+    from github_prs import repo_do_remote
+
+    itens = [p.strip() for p in (texto or "").replace(";", ",").split(",") if p.strip()]
+    if not itens and repo_local:
+        itens = [repo_local]
+    resolvidos = []
+    for item in itens:
+        if os.path.isdir(item):
+            ok, url = git_ok(item, ["remote", "get-url", "origin"])
+            nome = repo_do_remote(url) if ok else ""
+            if not nome:
+                raise StepError("Nao consegui descobrir o org/repo do clone em %s." % item)
+            log("  %s -> %s" % (item, nome))
+        elif "/" in item and ":" not in item and "\\" not in item:
+            nome = item.strip("/")
+        else:
+            raise StepError(
+                "'%s' nao e 'org/repo' nem uma pasta de clone existente." % item)
+        if nome not in resolvidos:
+            resolvidos.append(nome)
+    if not resolvidos:
+        raise StepError("Informe ao menos um repositorio (org/repo ou a pasta de um clone).")
+    return resolvidos
+
+
 def analisar(repo, producao, principal, dias, log):
     """Devolve (linhas, portados_por_autor, autores).
 
@@ -355,8 +386,8 @@ def main():
 
     root = tk.Tk()
     root.title("BackportCheck - o que falta na producao")
-    root.geometry("1260x860")
-    root.minsize(980, 680)
+    root.geometry("1260x910")
+    root.minsize(980, 720)
 
     state = load_state()
     log_queue = queue.Queue()
@@ -560,6 +591,7 @@ def main():
             "token_cifrado": _proteger(token_var.get().strip()),
             "autor_ciclo": "" if autor_c_var.get() == TODOS else autor_c_var.get(),
             "dias_parado": dias_parado_var.get().strip() or "7",
+            "conta": conta_var.get(),
         })
         save_state(state)
 
@@ -723,7 +755,7 @@ def main():
     # ------------------------------------------------------------- aba Ciclo
     import ciclo as mod_ciclo
     import github_prs
-    from openproject import OpenProject, desproteger, titulo_do_link, valor_do_campo
+    from openproject import OpenProject, desproteger, titulo_do_link
 
     ciclo_cache = {"linhas": [], "tipos": [], "status": [], "usuario": ""}
     ciclo_dados = []
@@ -738,7 +770,7 @@ def main():
     campo_repos = tk.Entry(topo_c, textvariable=repos_var)
     campo_repos.grid(row=0, column=1, columnspan=3, sticky="ew", pady=2)
     dica(campo_repos, repos_var, "minha-org/um-repo, minha-org/outro-repo")
-    tk.Label(topo_c, text="org/repo, separados por virgula", fg="#666").grid(
+    tk.Label(topo_c, text="org/repo OU a pasta de um clone", fg="#666").grid(
         row=0, column=4, sticky="w", padx=(6, 0))
 
     tk.Label(topo_c, text="OpenProject").grid(row=1, column=0, sticky="w", pady=2)
@@ -746,7 +778,7 @@ def main():
     campo_url = tk.Entry(topo_c, textvariable=op_url_var)
     campo_url.grid(row=1, column=1, sticky="ew", pady=2)
     dica(campo_url, op_url_var, "https://openproject.suaempresa.com.br")
-    tk.Label(topo_c, text="Query").grid(row=1, column=2, sticky="e", padx=(12, 6))
+    tk.Label(topo_c, text="Query salva (id)").grid(row=1, column=2, sticky="e", padx=(12, 6))
     query_var = tk.StringVar(value=state.get("query", ""))
     campo_query = tk.Entry(topo_c, textvariable=query_var, width=10)
     campo_query.grid(row=1, column=3, sticky="w")
@@ -779,13 +811,29 @@ def main():
     autor_c_combo = ttk.Combobox(topo_c, textvariable=autor_c_var, width=26, state="readonly")
     autor_c_combo["values"] = [TODOS] + ([state["autor_ciclo"]] if state.get("autor_ciclo") else [])
     autor_c_combo.grid(row=3, column=1, sticky="w", pady=2)
-    tk.Label(topo_c, text="Parado apos").grid(row=3, column=2, sticky="e", padx=(12, 6))
+    tk.Label(topo_c, text="Parado apos (dias)").grid(row=3, column=2, sticky="e", padx=(12, 6))
     dias_parado_var = tk.StringVar(value=str(state.get("dias_parado", "7")))
     tk.Entry(topo_c, textvariable=dias_parado_var, width=5).grid(row=3, column=3, sticky="w")
+    tk.Label(topo_c, text="Conta do GitHub").grid(row=4, column=0, sticky="w", pady=2)
+    contas = [github_prs.AUTOMATICA, github_prs.PADRAO_GIT] + [
+        u for _alvo, u in github_prs.contas_guardadas()]
+    conta_var = tk.StringVar(value=state.get("conta", github_prs.AUTOMATICA))
+    conta_combo = ttk.Combobox(topo_c, textvariable=conta_var, width=26, state="readonly",
+                               values=contas)
+    conta_combo.grid(row=4, column=1, sticky="w", pady=2)
+    if conta_var.get() not in contas:
+        conta_var.set(github_prs.AUTOMATICA)
+    rotulo_conta = tk.Label(topo_c, text="", fg="#0a7a0a")
+    rotulo_conta.grid(row=4, column=2, columnspan=3, sticky="w", padx=(12, 0))
+
+    tk.Label(topo_c, fg="#666", justify="left", text=(
+        "Query salva: o numero que aparece na URL do OpenProject como ?query_id=1234 - e a visao "
+        "ja filtrada do seu time.   |   Parado apos: dias sem nenhuma atualizacao no PR."
+    )).grid(row=5, column=0, columnspan=5, sticky="w", pady=(6, 0))
     tk.Label(topo_c, fg="#666", justify="left", text=(
         "O token e guardado cifrado nesta maquina (DPAPI) e volta preenchido na proxima vez. "
         "Nunca use a sua senha: gere um token em Minha conta -> Tokens de acesso."
-    )).grid(row=4, column=0, columnspan=5, sticky="w", pady=(6, 0))
+    )).grid(row=6, column=0, columnspan=5, sticky="w")
 
     btns_c = tk.Frame(aba_ciclo, padx=10)
     btns_c.pack(fill="x")
@@ -931,14 +979,17 @@ def main():
             return
 
         def work():
-            repos = [r.strip() for r in repos_var.get().replace(";", ",").split(",") if r.strip()]
-            if not repos:
-                raise StepError("Informe ao menos um repositorio no formato org/repo.")
-            usuario, segredo = github_prs.credencial_do_git(
-                repo_var.get().strip() or None, org_repo=repos[0])
+            log("")
+            log("--- repositorios ---")
+            repos = resolver_repos(repos_var.get(), repo_var.get().strip(), log)
+            log("  %s" % ", ".join(repos))
+            usuario, segredo = github_prs.credencial_escolhida(
+                conta_var.get(), repo_var.get().strip() or None, repos[0])
             gh = github_prs.GitHub(segredo)
             log("")
-            log("--- GitHub (credencial do proprio git: %s) ---" % (usuario or "?"))
+            log("--- GitHub (conta: %s) ---" % (usuario or "?"))
+            if usuario:
+                root.after(0, lambda: rotulo_conta.config(text="conta em uso: %s" % usuario))
             prs = []
             for org_repo in repos:
                 lote = gh.prs_abertos(org_repo)
@@ -953,20 +1004,32 @@ def main():
                 log("--- OpenProject ---")
                 cliente = OpenProject(url_op, token)
                 log("  conectado como %s" % cliente.eu())
-                wps = cliente.work_packages_da_query(query_var.get().strip())
-                log("  query %s: %d work package(s)" % (query_var.get().strip(), len(wps)))
+                # os numeros que interessam sao os das tarefas com PR aberto;
+                # a query salva e so um complemento opcional
+                numeros = sorted({mod_ciclo.tarefa_do_pr(p) for p in prs if mod_ciclo.tarefa_do_pr(p)})
+                wps = cliente.work_packages_por_id(numeros)
+                log("  %d tarefa(s) dos PRs abertos, %d encontrada(s)" % (len(numeros), len(wps)))
+                query_id = query_var.get().strip()
+                if query_id:
+                    ja = {str(w.get("id")) for w in wps}
+                    extras = [w for w in cliente.work_packages_da_query(query_id)
+                              if str(w.get("id")) not in ja]
+                    log("  query %s: +%d tarefa(s)" % (query_id, len(extras)))
+                    wps.extend(extras)
                 nomes = cliente.nomes_de_campos(wps[0]) if wps else {}
-                chave_build = next(
-                    (k for k, v in nomes.items() if str(v).strip().upper().startswith("X5")), "")
-                if chave_build:
-                    log("  campo de build: %s" % nomes[chave_build])
                 for wp in wps:
+                    campos = cliente.campos_customizados(wp, nomes)
+                    build = next((v for k, v in campos.items()
+                                  if str(k).strip().upper().startswith("X5")), "")
                     tarefas[str(wp.get("id"))] = {
                         "tipo": titulo_do_link(wp, "type"),
                         "status": titulo_do_link(wp, "status"),
                         "assunto": wp.get("subject", ""),
-                        "build": valor_do_campo(wp, chave_build) if chave_build else "",
+                        "build": build,
                     }
+                if tarefas:
+                    exemplo = list(tarefas.values())[0]
+                    log("  exemplo: tipo=%s status=%s" % (exemplo["tipo"], exemplo["status"]))
             else:
                 log("OpenProject nao configurado: o tipo sai do titulo do PR.")
 

@@ -7,16 +7,69 @@ o Git Credential Manager que vem junto com o Git for Windows.
 O token nao e digitado, nao e guardado por esta ferramenta e nunca vai para o log.
 """
 
+import ctypes
 import json
 import re
 import subprocess
 import urllib.error
 import urllib.request
+from ctypes import wintypes
 
 from cherrypick_tool import GIT, StepError
 
 TEMPO_LIMITE = 40
 API = "https://api.github.com"
+
+AUTOMATICA = "(automatica pelo repositorio)"
+PADRAO_GIT = "(padrao do git)"
+
+CRED_TYPE_GENERIC = 1
+
+
+class _CREDENTIAL(ctypes.Structure):
+    _fields_ = [
+        ("Flags", wintypes.DWORD), ("Type", wintypes.DWORD),
+        ("TargetName", wintypes.LPWSTR), ("Comment", wintypes.LPWSTR),
+        ("LastWritten", wintypes.FILETIME), ("CredentialBlobSize", wintypes.DWORD),
+        ("CredentialBlob", ctypes.POINTER(ctypes.c_byte)), ("Persist", wintypes.DWORD),
+        ("AttributeCount", wintypes.DWORD), ("Attributes", ctypes.c_void_p),
+        ("TargetAlias", wintypes.LPWSTR), ("UserName", wintypes.LPWSTR),
+    ]
+
+
+def contas_guardadas(filtro=u"git:https://github.com*"):
+    """[(alvo, usuario)] das credenciais git do GitHub no Gerenciador do Windows."""
+    quantidade = wintypes.DWORD()
+    ponteiro = ctypes.POINTER(ctypes.POINTER(_CREDENTIAL))()
+    try:
+        ok = ctypes.windll.advapi32.CredEnumerateW(
+            filtro, 0, ctypes.byref(quantidade), ctypes.byref(ponteiro))
+    except Exception:
+        return []
+    if not ok:
+        return []
+    achadas = []
+    try:
+        for i in range(quantidade.value):
+            cred = ponteiro[i].contents
+            if cred.UserName:
+                achadas.append((cred.TargetName, cred.UserName))
+    finally:
+        ctypes.windll.advapi32.CredFree(ponteiro)
+    return achadas
+
+
+def segredo_da_conta(alvo):
+    """Le o segredo de uma credencial guardada - a mesma que o git usaria."""
+    ponteiro = ctypes.POINTER(_CREDENTIAL)()
+    if not ctypes.windll.advapi32.CredReadW(alvo, CRED_TYPE_GENERIC, 0, ctypes.byref(ponteiro)):
+        return ""
+    try:
+        cred = ponteiro.contents
+        return ctypes.string_at(cred.CredentialBlob, cred.CredentialBlobSize).decode(
+            "utf-16-le", "ignore")
+    finally:
+        ctypes.windll.advapi32.CredFree(ponteiro)
 
 RE_ORIGEM = re.compile(r"github\.com[:/]+([\w.-]+)/([\w.-]+?)(?:\.git)?$", re.I)
 
@@ -25,6 +78,22 @@ def repo_do_remote(url_remote):
     """'https://github.com/Org/repo.git' -> 'Org/repo'. '' se nao reconhecer."""
     achado = RE_ORIGEM.search((url_remote or "").strip())
     return "%s/%s" % (achado.group(1), achado.group(2)) if achado else ""
+
+
+def credencial_escolhida(conta, caminho_repo, org_repo):
+    """Devolve (usuario, segredo) conforme a conta escolhida na tela."""
+    if conta and conta not in (AUTOMATICA, PADRAO_GIT):
+        for alvo, usuario in contas_guardadas():
+            if usuario == conta:
+                segredo = segredo_da_conta(alvo)
+                if segredo:
+                    return usuario, segredo
+        raise StepError("Nao consegui ler o segredo da conta '%s' no Gerenciador de "
+                        "Credenciais. Escolha outra conta." % conta)
+    if conta == PADRAO_GIT:
+        return credencial_do_git(caminho_repo)
+    # automatica: o caminho org/repo e o que faz o git escolher a conta certa
+    return credencial_do_git(caminho_repo, org_repo=org_repo)
 
 
 def credencial_do_git(caminho_repo=None, host="github.com", org_repo=""):
