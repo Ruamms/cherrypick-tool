@@ -426,6 +426,30 @@ def main():
     aba_ciclo = tk.Frame(abas)
     abas.add(aba_ciclo, text="  Ciclo (PRs abertos)  ")
 
+    def ligar_ordenacao(grid, colunas, titulos, ordem, chaves, redesenhar):
+        """Clique no cabecalho ordena; clique de novo inverte."""
+        def clicar(coluna):
+            if coluna not in chaves:
+                return
+            if ordem["col"] == coluna:
+                ordem["desc"] = not ordem["desc"]
+            else:
+                ordem["col"], ordem["desc"] = coluna, False
+            for col in colunas:
+                texto = titulos.get(col, col.upper())
+                if col == ordem["col"]:
+                    texto += "  ▼" if ordem["desc"] else "  ▲"
+                grid.heading(col, text=texto)
+            redesenhar()
+
+        for col in colunas:
+            grid.heading(col, command=lambda c=col: clicar(c))
+
+    def aplicar_ordem(linhas, ordem, chaves):
+        if ordem["col"] in chaves:
+            linhas.sort(key=chaves[ordem["col"]], reverse=ordem["desc"])
+        return linhas
+
     topo = tk.Frame(aba_git, padx=10, pady=8)
     topo.pack(fill="x")
     topo.columnconfigure(1, weight=1)
@@ -596,6 +620,18 @@ def main():
         })
         save_state(state)
 
+    ordem_git = {"col": None, "desc": False}
+    CHAVES_GIT = {
+        "status": lambda l: (ORDEM.get(l["status"], 9), l["data"]),
+        "conflito": lambda l: {CONFLITO: 0, NAO_CHECADO: 1, SEM_INFO: 2, LIMPO: 3}.get(
+            l["conflito"], 9),
+        "data": lambda l: l["data"],
+        "autor": lambda l: l["autor"].lower(),
+        "op": lambda l: int(l["op"]) if l["op"].isdigit() else -1,
+        "pr": lambda l: int(l["pr"]) if l["pr"].isdigit() else -1,
+        "assunto": lambda l: l["assunto"].lower(),
+    }
+
     def render():
         """Redesenha a grade a partir do cache, aplicando o filtro de autor."""
         autor = autor_var.get()
@@ -605,6 +641,7 @@ def main():
         else:
             linhas = [l for l in cache["linhas"] if l["autor"] == autor]
             portados = cache["portados"].get(autor, 0)
+        aplicar_ordem(linhas, ordem_git, CHAVES_GIT)
         dados[:] = linhas
         grid.delete(*grid.get_children())
         for i, linha in enumerate(linhas):
@@ -622,6 +659,8 @@ def main():
         status.config(text=resumo, fg="#333")
         checar_conflitos()
         return resumo
+
+    ligar_ordenacao(grid, colunas, {}, ordem_git, CHAVES_GIT, lambda: render())
 
     def checar_conflitos():
         """Preenche a coluna conflito em segundo plano, sem travar os botoes."""
@@ -897,10 +936,29 @@ def main():
 
     grid_c.bind("<<TreeviewSelect>>", on_select_c)
 
+    def _num_pr(texto):
+        numeros = re.findall(r"\d+", texto or "")
+        return int(numeros[0]) if numeros else -1
+
+    ordem_ciclo = {"col": None, "desc": False}
+    CHAVES_CICLO = {
+        "pendencia": lambda l: (mod_ciclo.ORDEM_CICLO.get(l["pendencia"], 9), -l["idade"]),
+        "tarefa": lambda l: int(l["tarefa"]) if str(l["tarefa"]).isdigit() else -1,
+        "tipo": lambda l: str(l["tipo"]).lower(),
+        "status": lambda l: str(l["status_wp"]).lower(),
+        "principal": lambda l: _num_pr(l["pr_principal"]),
+        "producao": lambda l: _num_pr(l["pr_producao"]),
+        "outros": lambda l: _num_pr(l["pr_outros"]),
+        "build": lambda l: str(l["build"] or "").lower(),
+        "dias": lambda l: l["idade"],
+        "assunto": lambda l: str(l["assunto"]).lower(),
+    }
+
     def render_ciclo():
         autor = autor_c_var.get()
         linhas = [l for l in ciclo_cache["linhas"]
                   if autor == TODOS or autor in l["autores"]]
+        aplicar_ordem(linhas, ordem_ciclo, CHAVES_CICLO)
         ciclo_dados[:] = linhas
         grid_c.delete(*grid_c.get_children())
         for i, l in enumerate(linhas):
@@ -919,6 +977,9 @@ def main():
                       contagem.get(mod_ciclo.SEM_BUILD, 0), contagem.get(mod_ciclo.PARADO, 0)))
         status.config(text=resumo, fg="#333")
         return resumo
+
+    ligar_ordenacao(grid_c, colunas_c, titulos_c, ordem_ciclo, CHAVES_CICLO,
+                    lambda: render_ciclo())
 
     def escolher_varios(titulo, opcoes, marcados):
         if not opcoes:

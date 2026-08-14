@@ -36,6 +36,9 @@ Não precisa de Python nem saber compilar — baixe o `.exe` e execute:
 
 O executável embute o runtime do Python — **não** é preciso ter Python instalado.
 
+Nas duas abas, **clicar no cabeçalho de uma coluna ordena por ela**; clicar de novo inverte
+(▲/▼ marcam a coluna ativa). A ordenação é sobre o resultado já carregado — não refaz consulta.
+
 ---
 
 # BackportCheck
