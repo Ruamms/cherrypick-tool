@@ -11,7 +11,8 @@ a branch de produção e descobriu a que faltou pelo cliente reclamando.
 | **BackportCheck** | **Descobrir** o que está na principal e ainda não chegou na produção — e portar dali mesmo. |
 | **CherryPickPush** | **Portar** quando você já sabe o commit e o nome da branch. |
 
-Ambas são git puro: sem API, sem token, sem servidor.
+O trabalho com git é puro `git` — sem API e sem servidor. Só a aba **Ciclo** do BackportCheck
+fala com serviços externos (GitHub e, opcionalmente, OpenProject), e ela é somente leitura.
 
 ## Baixar
 
@@ -116,6 +117,48 @@ Em conflito ele **para** e não empurra nada — mesmas travas do CherryPickPush
 
 Duplo clique numa linha abre o PR de origem no navegador (ou o commit, se o assunto não
 trouxer o `(#1234)`).
+
+## Aba "Ciclo": PRs abertos + OpenProject
+
+A aba git responde "o que **está** onde". A aba Ciclo responde "o que **deveria** estar" —
+porque a regra (que tipo de tarefa precisa chegar na produção) e o estado do teste moram no
+gerenciador de tarefas, não no git.
+
+Ela cruza duas fontes e não depende do `gh` CLI:
+
+- **GitHub** — os PRs **abertos** dos repositórios que você listar. A credencial é pedida ao
+  próprio git (`git credential fill`), ou seja, a mesma que o seu `git push` já usa: nada é
+  digitado, nada é guardado por esta ferramenta.
+- **OpenProject** (opcional) — os work packages de uma *query salva*, de onde saem o tipo, o
+  status e o campo de build. Sem ele a aba funciona igual, deduzindo o tipo do título do PR.
+
+| Situação | Significa |
+| -------- | --------- |
+| **PODE MERGEAR** (verde) | a tarefa está num status que você marcou como liberado e o PR continua aberto |
+| **SEM PR DE PRODUCAO** (vermelho) | o tipo exige produção e não há PR aberto para essa branch |
+| **PARADO** (laranja) | PR aberto sem nenhuma atualização há mais dias que o limite |
+| **OK** (cinza) | nada a fazer pelo que dá para ver dos PRs abertos |
+
+Os PRs são agrupados por **número da tarefa**, tirado do nome do branch (`fb_123456_2601`) ou
+do título, então as duas pontas de uma mesma tarefa aparecem na mesma linha — uma coluna para
+a principal, outra para a produção, e uma terceira para PRs abertos contra outras branches
+(outras linhas de release, por exemplo).
+
+**Escopo desta versão: só PR aberto.** O que já foi mergeado sai do radar. Por isso a pendência
+se chama *sem PR aberto para produção* e não *não está na produção* — para saber isso, use a
+aba git, que lê o histórico e não depende de PR nenhum.
+
+### Configuração
+
+Quais tipos exigem produção e quais status liberam o merge são **escolhidos por você**, em dois
+botões que listam os valores encontrados na sua própria base — nada de processo de empresa
+nenhuma vem embutido no código. A comparação de branch ignora maiúsculas, porque a API do
+GitHub costuma devolver o nome da branch em minúsculas onde o git local mostra em maiúsculas.
+
+O token do OpenProject (gerado em *Minha conta → Tokens de acesso*; **nunca** a sua senha) fica
+em `%APPDATA%\cherrypick-tool\backport.json`, que está fora da pasta do repositório — não há
+como subir por engano — e é cifrado com a **DPAPI do Windows**, amarrada à sua conta: copiar o
+arquivo para outra máquina não serve de nada.
 
 ---
 

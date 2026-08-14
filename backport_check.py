@@ -42,6 +42,7 @@ JANELA_PRODUCAO_DIAS = 1095
 PENDENTE = "PENDENTE"
 BRANCH = "BRANCH CRIADA"
 PROVAVEL = "PROVAVEL"
+PORTADO = "PORTADO"
 
 ORDEM = {PENDENTE: 0, BRANCH: 1, PROVAVEL: 2}
 
@@ -102,6 +103,64 @@ def nome_branch_padrao(op, sha, sufixo):
 
 def _ref_valida(repo, ref):
     return git_ok(repo, ["rev-parse", "-q", "--verify", ref + "^{commit}"])[0]
+
+
+def indice_producao(repo, ref_prod):
+    """Assuntos normalizados e numeros de tarefa ja presentes na producao."""
+    ok, saida = git_ok(repo, [
+        "log", "--format=%s", ref_prod, "--since=%d days ago" % JANELA_PRODUCAO_DIAS,
+    ])
+    if not ok:
+        raise StepError("Nao foi possivel ler o historico de %s." % ref_prod)
+    assuntos, ops = set(), {}
+    for linha in saida.splitlines():
+        chave = norm_assunto(linha)
+        if chave:
+            assuntos.add(chave)
+        for op in ops_do_assunto(linha):
+            ops.setdefault(op, linha.strip())
+    return assuntos, ops, len(saida.splitlines())
+
+
+def branches_do_origin(repo):
+    ok, saida = git_ok(repo, ["ls-remote", "--heads", "origin"])
+    if not ok:
+        return []
+    nomes = []
+    for linha in saida.splitlines():
+        partes = linha.split("refs/heads/", 1)
+        if len(partes) == 2:
+            nomes.append(partes[1].strip())
+    return nomes
+
+
+def classificar(assunto, assuntos_prod, ops_prod, branches_remotas, sufixo):
+    """Situacao de um commit da principal em relacao a producao."""
+    if norm_assunto(assunto) in assuntos_prod:
+        return PORTADO, "assunto identico ja esta na producao"
+    ops = ops_do_assunto(assunto)
+    comuns = sorted(ops & set(ops_prod))
+    if comuns:
+        return PROVAVEL, "tarefa %s ja aparece na producao: %s" % (comuns[0], ops_prod[comuns[0]])
+    achadas = [b for b in branches_remotas if sufixo in b and any(op in b for op in ops)]
+    if achadas:
+        return BRANCH, "branch no origin sem merge na producao: %s" % ", ".join(achadas[:3])
+    return PENDENTE, ""
+
+
+def commit_do_pr(repo, ref_main, numero):
+    """Acha na principal o commit do squash merge do PR <numero>. ('', '') se nao houver."""
+    ok, saida = git_ok(repo, [
+        "log", ref_main, "--fixed-strings", "--grep=(#%s)" % numero,
+        "--format=%H%x1f%s%x1f%ad", "--date=short", "-2",
+    ])
+    if not ok or not saida.strip():
+        return "", "", ""
+    primeiro = saida.splitlines()[0]
+    if primeiro.count("\x1f") < 2:
+        return "", "", ""
+    sha, assunto, data = primeiro.split("\x1f", 2)
+    return sha, assunto, data
 
 
 def analisar(repo, producao, principal, dias, log):
@@ -296,8 +355,8 @@ def main():
 
     root = tk.Tk()
     root.title("BackportCheck - o que falta na producao")
-    root.geometry("1180x790")
-    root.minsize(940, 620)
+    root.geometry("1260x860")
+    root.minsize(980, 680)
 
     state = load_state()
     log_queue = queue.Queue()
@@ -308,7 +367,14 @@ def main():
     def log(msg=""):
         log_queue.put(msg)
 
-    topo = tk.Frame(root, padx=10, pady=8)
+    abas = ttk.Notebook(root)
+    abas.pack(fill="both", expand=True, padx=8, pady=(8, 0))
+    aba_git = tk.Frame(abas)
+    abas.add(aba_git, text="  Backport (git)  ")
+    aba_ciclo = tk.Frame(abas)
+    abas.add(aba_ciclo, text="  Ciclo (PRs abertos)  ")
+
+    topo = tk.Frame(aba_git, padx=10, pady=8)
     topo.pack(fill="x")
     topo.columnconfigure(1, weight=1)
 
@@ -344,7 +410,7 @@ def main():
     dias_var = tk.StringVar(value=str(state.get("dias", "180")))
     tk.Entry(topo, textvariable=dias_var, width=6).grid(row=2, column=3, sticky="e")
 
-    btns = tk.Frame(root, padx=10)
+    btns = tk.Frame(aba_git, padx=10)
     btns.pack(fill="x")
     btn_analisar = tk.Button(btns, text="Analisar", width=14)
     btn_analisar.pack(side="left")
@@ -358,7 +424,7 @@ def main():
         fg="#666",
     ).pack(side="left", padx=10)
 
-    legenda = tk.Frame(root, padx=10, pady=6)
+    legenda = tk.Frame(aba_git, padx=10, pady=6)
     legenda.pack(fill="x")
     tk.Label(legenda, text="Legenda:", fg="#333").grid(row=0, column=0, sticky="nw")
     for i, (situacao, texto) in enumerate(LEGENDA):
@@ -370,7 +436,7 @@ def main():
         row=len(LEGENDA), column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(2, 0)
     )
 
-    corpo = tk.Frame(root, padx=10, pady=8)
+    corpo = tk.Frame(aba_git, padx=10, pady=8)
     corpo.pack(fill="both", expand=True)
 
     colunas = ("status", "conflito", "data", "autor", "op", "pr", "assunto")
@@ -455,13 +521,22 @@ def main():
     grid.bind("<<TreeviewSelect>>", on_select)
 
     def salvar():
-        save_state({
+        """Grava o estado das duas abas. O token vai cifrado pela DPAPI; nunca em claro."""
+        from openproject import proteger as _proteger
+        state.update({
             "repo": repo_var.get().strip(),
             "producao": prod_var.get().strip(),
             "principal": main_var.get().strip(),
             "autor": "" if autor_var.get() == TODOS else autor_var.get(),
             "dias": dias_var.get().strip() or "180",
+            "repos": repos_var.get().strip(),
+            "op_url": op_url_var.get().strip(),
+            "query": query_var.get().strip(),
+            "token_cifrado": _proteger(token_var.get().strip()),
+            "autor_ciclo": "" if autor_c_var.get() == TODOS else autor_c_var.get(),
+            "dias_parado": dias_parado_var.get().strip() or "7",
         })
+        save_state(state)
 
     def render():
         """Redesenha a grade a partir do cache, aplicando o filtro de autor."""
@@ -620,7 +695,262 @@ def main():
     btn_backport.config(command=do_backport)
     btn_pr.config(command=do_abrir_pr)
 
-    log("Compara a branch principal com a de producao e lista o que falta portar.")
+    # ------------------------------------------------------------- aba Ciclo
+    import ciclo as mod_ciclo
+    import github_prs
+    from openproject import OpenProject, desproteger, titulo_do_link, valor_do_campo
+
+    ciclo_cache = {"linhas": [], "tipos": [], "status": [], "usuario": ""}
+    ciclo_dados = []
+    resultado_ciclo = {}
+
+    topo_c = tk.Frame(aba_ciclo, padx=10, pady=8)
+    topo_c.pack(fill="x")
+    topo_c.columnconfigure(1, weight=1)
+
+    tk.Label(topo_c, text="Repositorios").grid(row=0, column=0, sticky="w", pady=2)
+    repos_var = tk.StringVar(value=state.get("repos", ""))
+    tk.Entry(topo_c, textvariable=repos_var).grid(row=0, column=1, columnspan=3, sticky="ew", pady=2)
+    tk.Label(topo_c, text="org/repo, separados por virgula", fg="#666").grid(
+        row=0, column=4, sticky="w", padx=(6, 0))
+
+    tk.Label(topo_c, text="OpenProject").grid(row=1, column=0, sticky="w", pady=2)
+    op_url_var = tk.StringVar(value=state.get("op_url", ""))
+    tk.Entry(topo_c, textvariable=op_url_var).grid(row=1, column=1, sticky="ew", pady=2)
+    tk.Label(topo_c, text="Query").grid(row=1, column=2, sticky="e", padx=(12, 6))
+    query_var = tk.StringVar(value=state.get("query", ""))
+    tk.Entry(topo_c, textvariable=query_var, width=10).grid(row=1, column=3, sticky="w")
+
+    tk.Label(topo_c, text="Token da API").grid(row=2, column=0, sticky="w", pady=2)
+    token_var = tk.StringVar(value=desproteger(state.get("token_cifrado", "")))
+    tk.Entry(topo_c, textvariable=token_var, show="*").grid(row=2, column=1, sticky="ew", pady=2)
+    tk.Label(topo_c, text="cifrado nesta maquina (DPAPI); opcional", fg="#666").grid(
+        row=2, column=2, columnspan=3, sticky="w", padx=(12, 0))
+
+    tk.Label(topo_c, text="Autor").grid(row=3, column=0, sticky="w", pady=2)
+    autor_c_var = tk.StringVar(value=state.get("autor_ciclo", "") or TODOS)
+    autor_c_combo = ttk.Combobox(topo_c, textvariable=autor_c_var, width=26, state="readonly")
+    autor_c_combo["values"] = [TODOS] + ([state["autor_ciclo"]] if state.get("autor_ciclo") else [])
+    autor_c_combo.grid(row=3, column=1, sticky="w", pady=2)
+    tk.Label(topo_c, text="Parado apos").grid(row=3, column=2, sticky="e", padx=(12, 6))
+    dias_parado_var = tk.StringVar(value=str(state.get("dias_parado", "7")))
+    tk.Entry(topo_c, textvariable=dias_parado_var, width=5).grid(row=3, column=3, sticky="w")
+
+    btns_c = tk.Frame(aba_ciclo, padx=10)
+    btns_c.pack(fill="x")
+    btn_carregar = tk.Button(btns_c, text="Carregar", width=14)
+    btn_carregar.pack(side="left")
+    btn_tipos = tk.Button(btns_c, text="Tipos que exigem producao...", width=28)
+    btn_tipos.pack(side="left", padx=6)
+    btn_status = tk.Button(btns_c, text="Status que liberam merge...", width=26)
+    btn_status.pack(side="left")
+    btn_abrir_wp = tk.Button(btns_c, text="Abrir tarefa / PR", width=16, state="disabled")
+    btn_abrir_wp.pack(side="left", padx=6)
+
+    legenda_c = tk.Frame(aba_ciclo, padx=10, pady=6)
+    legenda_c.pack(fill="x")
+    tk.Label(legenda_c, text="Legenda:", fg="#333").grid(row=0, column=0, sticky="nw")
+    for i, (situacao, texto) in enumerate(mod_ciclo.LEGENDA_CICLO):
+        tk.Label(legenda_c, text=situacao, fg=mod_ciclo.CORES_CICLO[situacao],
+                 font=("TkDefaultFont", 9, "bold")).grid(row=i, column=1, sticky="w", padx=(8, 6))
+        tk.Label(legenda_c, text="= " + texto, fg="#444").grid(row=i, column=2, sticky="w")
+    tk.Label(legenda_c, fg="#777", text=(
+        "So enxerga PR ABERTO: o que ja foi mergeado sai do radar, e por isso a pendencia diz "
+        "'sem PR aberto para producao', nao 'nao esta na producao'."
+    )).grid(row=len(mod_ciclo.LEGENDA_CICLO), column=1, columnspan=2, sticky="w",
+            padx=(8, 0), pady=(2, 0))
+
+    corpo_c = tk.Frame(aba_ciclo, padx=10, pady=8)
+    corpo_c.pack(fill="both", expand=True)
+    colunas_c = ("pendencia", "tarefa", "tipo", "status", "principal", "producao", "outros", "dias", "assunto")
+    larguras_c = (150, 70, 105, 115, 80, 80, 110, 45, 420)
+    grid_c = ttk.Treeview(corpo_c, columns=colunas_c, show="headings", selectmode="extended", height=13)
+    for col, larg in zip(colunas_c, larguras_c):
+        grid_c.heading(col, text=col.upper())
+        grid_c.column(col, width=larg, anchor="w", stretch=(col == "assunto"))
+    barra_c = ttk.Scrollbar(corpo_c, orient="vertical", command=grid_c.yview)
+    grid_c.configure(yscrollcommand=barra_c.set)
+    grid_c.pack(side="left", fill="both", expand=True)
+    barra_c.pack(side="left", fill="y")
+    for situacao, cor in mod_ciclo.CORES_CICLO.items():
+        grid_c.tag_configure(situacao, foreground=cor)
+
+    def selecionadas_c():
+        return [ciclo_dados[int(i)] for i in grid_c.selection()]
+
+    def on_select_c(_evt=None):
+        btn_abrir_wp.config(state="normal" if grid_c.selection() else "disabled")
+        marcadas = selecionadas_c()
+        if len(marcadas) == 1 and marcadas[0]["detalhe"]:
+            status.config(text=marcadas[0]["detalhe"], fg="#333")
+
+    grid_c.bind("<<TreeviewSelect>>", on_select_c)
+
+    def render_ciclo():
+        autor = autor_c_var.get()
+        linhas = [l for l in ciclo_cache["linhas"]
+                  if autor == TODOS or autor in l["autores"]]
+        ciclo_dados[:] = linhas
+        grid_c.delete(*grid_c.get_children())
+        for i, l in enumerate(linhas):
+            grid_c.insert("", "end", iid=str(i), tags=(l["pendencia"],), values=(
+                l["pendencia"], l["tarefa"], l["tipo"][:14], l["status_wp"][:16],
+                l["pr_principal"], l["pr_producao"], l["pr_outros"][:16], l["idade"],
+                l["assunto"],
+            ))
+        contagem = {}
+        for l in linhas:
+            contagem[l["pendencia"]] = contagem.get(l["pendencia"], 0) + 1
+        resumo = "%d tarefa(s): %d pode(m) mergear, %d sem PR de producao, %d parada(s)." % (
+            len(linhas), contagem.get(mod_ciclo.MERGEAR, 0),
+            contagem.get(mod_ciclo.SEM_PROD, 0), contagem.get(mod_ciclo.PARADO, 0))
+        status.config(text=resumo, fg="#333")
+        return resumo
+
+    def escolher_varios(titulo, opcoes, marcados):
+        if not opcoes:
+            messagebox.showinfo("Sem dados", "Clique em Carregar antes de escolher.", parent=root)
+            return None
+        janela = tk.Toplevel(root)
+        janela.title(titulo)
+        janela.transient(root)
+        janela.grab_set()
+        tk.Label(janela, text=titulo, padx=12, pady=8).pack(anchor="w")
+        quadro = tk.Frame(janela, padx=16)
+        quadro.pack(fill="both", expand=True)
+        escolhas = {}
+        for opcao in opcoes:
+            var = tk.BooleanVar(value=opcao in marcados)
+            escolhas[opcao] = var
+            tk.Checkbutton(quadro, text=opcao, variable=var).pack(anchor="w")
+        saida = {"ok": False}
+
+        def confirmar():
+            saida["ok"] = True
+            janela.destroy()
+
+        barra = tk.Frame(janela, pady=10)
+        barra.pack()
+        tk.Button(barra, text="OK", width=10, command=confirmar).pack(side="left", padx=4)
+        tk.Button(barra, text="Cancelar", width=10, command=janela.destroy).pack(side="left")
+        root.wait_window(janela)
+        if not saida["ok"]:
+            return None
+        return [o for o, v in escolhas.items() if v.get()]
+
+    def do_tipos():
+        escolha = escolher_varios("Tipos de tarefa que exigem chegar na producao:",
+                                  ciclo_cache["tipos"], state.get("tipos_exigem", []))
+        if escolha is None:
+            return
+        state["tipos_exigem"] = escolha
+        salvar()
+        if ciclo_cache["linhas"]:
+            do_carregar_ciclo()
+
+    def do_status():
+        escolha = escolher_varios("Status que indicam que a tarefa ja pode ser mergeada:",
+                                  ciclo_cache["status"], state.get("status_libera", []))
+        if escolha is None:
+            return
+        state["status_libera"] = escolha
+        salvar()
+        if ciclo_cache["linhas"]:
+            do_carregar_ciclo()
+
+    def concluir_ciclo():
+        ciclo_cache["linhas"] = resultado_ciclo.get("linhas", [])
+        ciclo_cache["tipos"] = resultado_ciclo.get("tipos_vistos", [])
+        ciclo_cache["status"] = resultado_ciclo.get("status_vistos", [])
+        autores = resultado_ciclo.get("autores", [])
+        autor_c_combo["values"] = [TODOS] + autores
+        if autor_c_var.get() not in [TODOS] + autores:
+            autor_c_var.set(resultado_ciclo.get("usuario") if
+                            resultado_ciclo.get("usuario") in autores else TODOS)
+        log("")
+        log(render_ciclo())
+        if not state.get("tipos_exigem"):
+            log("Nenhum tipo marcado como 'exige producao' - use o botao 'Tipos que exigem producao...'.")
+
+    def do_carregar_ciclo():
+        salvar()
+        dias_p = dias_parado_var.get().strip() or "7"
+        if not dias_p.isdigit():
+            status.config(text="'Parado apos' deve ser um numero.", fg="#c00")
+            return
+
+        def work():
+            repos = [r.strip() for r in repos_var.get().replace(";", ",").split(",") if r.strip()]
+            if not repos:
+                raise StepError("Informe ao menos um repositorio no formato org/repo.")
+            usuario, segredo = github_prs.credencial_do_git(
+                repo_var.get().strip() or None, org_repo=repos[0])
+            gh = github_prs.GitHub(segredo)
+            log("")
+            log("--- GitHub (credencial do proprio git: %s) ---" % (usuario or "?"))
+            prs = []
+            for org_repo in repos:
+                lote = gh.prs_abertos(org_repo)
+                log("  %s: %d PR(s) aberto(s)" % (org_repo, len(lote)))
+                prs.extend(lote)
+
+            tarefas = {}
+            url_op = op_url_var.get().strip()
+            token = token_var.get().strip()
+            if url_op and token:
+                log("")
+                log("--- OpenProject ---")
+                cliente = OpenProject(url_op, token)
+                log("  conectado como %s" % cliente.eu())
+                wps = cliente.work_packages_da_query(query_var.get().strip())
+                log("  query %s: %d work package(s)" % (query_var.get().strip(), len(wps)))
+                nomes = cliente.nomes_de_campos(wps[0]) if wps else {}
+                chave_build = next(
+                    (k for k, v in nomes.items() if str(v).strip().upper().startswith("X5")), "")
+                if chave_build:
+                    log("  campo de build: %s" % nomes[chave_build])
+                for wp in wps:
+                    tarefas[str(wp.get("id"))] = {
+                        "tipo": titulo_do_link(wp, "type"),
+                        "status": titulo_do_link(wp, "status"),
+                        "assunto": wp.get("subject", ""),
+                        "build": valor_do_campo(wp, chave_build) if chave_build else "",
+                    }
+            else:
+                log("OpenProject nao configurado: o tipo sai do titulo do PR.")
+
+            linhas = mod_ciclo.montar(
+                prs, tarefas,
+                prod_var.get().strip() or "producao", main_var.get().strip() or "master",
+                state.get("tipos_exigem", []), state.get("status_libera", []), int(dias_p),
+            )
+            resultado_ciclo["linhas"] = linhas
+            resultado_ciclo["autores"] = sorted({p["autor"] for p in prs if p["autor"]})
+            resultado_ciclo["usuario"] = usuario
+            resultado_ciclo["tipos_vistos"] = sorted({l["tipo"] for l in linhas if l["tipo"] != "-"})
+            resultado_ciclo["status_vistos"] = sorted(
+                {l["status_wp"] for l in linhas if l["status_wp"] != "-"})
+
+        in_thread(work, "Ciclo carregado.", depois=concluir_ciclo)
+
+    def do_abrir_ciclo():
+        for linha in selecionadas_c()[:4]:
+            url_op = op_url_var.get().strip().rstrip("/")
+            if linha["tarefa"] != "-" and url_op:
+                webbrowser.open("%s/work_packages/%s" % (url_op, linha["tarefa"]), new=2)
+            for pr in linha["prs"][:4]:
+                if pr.get("url"):
+                    webbrowser.open(pr["url"], new=2)
+
+    autor_c_combo.bind("<<ComboboxSelected>>", lambda _e: (salvar(), render_ciclo()))
+    btn_carregar.config(command=do_carregar_ciclo)
+    btn_tipos.config(command=do_tipos)
+    btn_status.config(command=do_status)
+    btn_abrir_wp.config(command=do_abrir_ciclo)
+    grid_c.bind("<Double-1>", lambda _e: do_abrir_ciclo())
+
+    log("Aba 'Backport (git)': compara a principal com a producao e lista o que falta portar.")
+    log("Aba 'Ciclo': cruza os PRs ABERTOS do GitHub com as tarefas do OpenProject.")
     log("Selecione uma linha para ver o detalhe da situacao na barra de status.")
     pump()
     root.mainloop()

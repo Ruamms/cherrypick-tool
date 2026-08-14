@@ -2,3 +2,9 @@
 build/
 __pycache__/
 *.pyc
+
+# nenhum segredo mora nesta pasta (o estado fica em %APPDATA%), mas por seguranca:
+*.token
+*.secret
+segredos.json
+token.json
