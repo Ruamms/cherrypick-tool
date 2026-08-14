@@ -118,8 +118,8 @@ Em conflito ele **para** e não empurra nada — mesmas travas do CherryPickPush
 > no histórico: sobram o assunto e o `(#1234)`. Por isso o padrão é `fb_<tarefa>_<sufixo>`,
 > e não `<branch origem>_<sufixo>`.
 
-Duplo clique numa linha abre o PR de origem no navegador (ou o commit, se o assunto não
-trouxer o `(#1234)`).
+O botão **Abrir PR de origem** — ou duplo clique na linha — abre no navegador o PR que originou
+aquele commit (ou o próprio commit, se o assunto não trouxer o `(#1234)`).
 
 ## Aba "Ciclo": PRs abertos + OpenProject
 
@@ -161,12 +161,32 @@ aba git, que lê o histórico e não depende de PR nenhum.
 
 ### Os campos
 
+Na ordem em que aparecem na tela:
+
 | Campo | O que é |
 | ----- | ------- |
 | **Repositorios** | `org/repo` separados por vírgula **ou** o caminho de um clone — nesse caso o `org/repo` é descoberto pelo remote `origin`. Vazio usa o repositório da aba git. |
-| **Query salva (id)** | **opcional.** O número que aparece na URL do gerenciador como `?query_id=1234` — a visão já filtrada do seu time, para trazer também tarefas que não têm PR aberto. As tarefas dos PRs são buscadas pelo número, independente dela. |
+| **OpenProject** | URL da sua instância. **Opcional**: sem ela a aba roda só com o GitHub e deduz o tipo do título do PR. |
+| **Token da API** | token pessoal do OpenProject (*Minha conta → Tokens de acesso*), **nunca** a sua senha. O botão **Onde pegar o token** abre essa página. Guardado cifrado nesta máquina. |
+| **Autor** | filtra por quem abriu o PR; a lista é preenchida pela carga. `(todos)` mostra o time inteiro. |
+| **Branch de producao** | contra qual branch o PR de produção é esperado (ex.: `release-2601`). Vazio, usa a da aba git. A comparação ignora maiúsculas. |
+| **Query salva (id)** | **opcional.** O número que aparece na URL do gerenciador como `?query_id=1234` — a visão já filtrada do seu time, para trazer também tarefas que não têm PR aberto (é o que permite pegar o caso *FALTA A BUILD*). As tarefas dos PRs são buscadas pelo número, independente dela. |
 | **Parado apos (dias)** | quantos dias sem **nenhuma** atualização no PR para ele ser marcado como PARADO. |
 | **Conta do GitHub** | qual credencial usar (veja abaixo). |
+
+### Os botões
+
+- **Carregar** — busca os PRs abertos e as tarefas, e monta a lista. É a ação principal da aba.
+- **Tipos que exigem producao...** — marque aqui os tipos (corretiva, dívida técnica, o que for
+  na sua casa) que precisam chegar na produção. **Sem nenhum marcado, ninguém é cobrado por
+  falta de PR de produção** — o log avisa quando isso acontece.
+- **Status que liberam merge...** — status intermediários que também contam como "pronto"
+  (os fechados na instância já contam sozinhos).
+- **Abrir tarefa / PR** — abre no navegador a tarefa selecionada e os PRs dela. Duplo clique
+  na linha faz o mesmo.
+
+Os dois botões de configuração só listam valores depois da primeira carga — eles mostram o que
+existe na sua base, não uma lista fixa.
 
 ### Qual conta do GitHub ele usa
 
