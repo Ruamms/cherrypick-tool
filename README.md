@@ -151,9 +151,34 @@ status com `isClosed`. O botão **Status que liberam merge** serve para incluir 
 intermediários (um "teste aprovado", por exemplo) que a instância não considera fechados.
 
 Os PRs são agrupados por **número da tarefa**, tirado do nome do branch (`fb_123456_2601`) ou
-do título, então as duas pontas de uma mesma tarefa aparecem na mesma linha. As colunas
-**PR PRINCIPAL**, **PR PRODUCAO** e **PR OUTRAS BRANCHES** mostram o número do PR aberto para
-cada destino (`-` quando não há), e **BUILD (X5)** mostra o campo de build da tarefa.
+do título, então as duas pontas de uma mesma tarefa aparecem na mesma linha.
+
+### O que cada lado diz
+
+As colunas **PR PRINCIPAL** e **PR PRODUCAO** não mostram só o número do PR — mostram a
+situação daquele lado, que é o que interessa para agir:
+
+| Texto | Significa |
+| ----- | --------- |
+| `mergeado` | a tarefa já aparece no histórico daquela branch (lido do clone local) |
+| `aprovado, falta mergear` | PR aberto e já aprovado na revisão |
+| `comentado, sem aprovar (Nd)` | alguém revisou e comentou, mas não apertou aprovar |
+| `revisao pediu ajuste` | PR aberto com pedido de mudança |
+| `aguardando aprovacao (Nd)` | PR aberto e ninguém encostou ainda |
+| `rascunho` | PR aberto como *draft* |
+| `PR nao aberto` | nada aberto e nada no histórico daquela branch |
+| `sem PR aberto` | nada aberto e **não havia clone local** para conferir o histórico |
+
+Para distinguir `mergeado` de `PR nao aberto` é preciso ter o **clone local** informado no
+campo Repositórios — é do histórico do git que sai essa resposta, não do GitHub. Sem clone,
+os dois casos viram `sem PR aberto`, que é honesto sobre o que se sabe.
+
+**Clicar na célula de PR abre aquele PR no navegador** (o cursor vira mãozinha em cima das
+células que têm link). **BUILD (X5)** mostra o campo de build da tarefa.
+
+> Se o seu time não usa o botão *Approve* do GitHub, `aprovado, falta mergear` não vai
+> aparecer — o que você verá é `comentado, sem aprovar` contra `aguardando aprovacao`, que
+> ainda separa o PR que alguém olhou do PR em que ninguém encostou.
 
 **Escopo desta versão: só PR aberto.** O que já foi mergeado sai do radar. Por isso a pendência
 se chama *sem PR aberto para produção* e não *não está na produção* — para saber isso, use a

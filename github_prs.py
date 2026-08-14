@@ -163,6 +163,56 @@ class GitHub(object):
     def usuario(self):
         return self._get(API + "/user").get("login", "?")
 
+    def revisao(self, org_repo, numero):
+        """'aprovado', 'ajustes', 'comentado' ou ''.
+
+        Vale a ultima revisao de cada pessoa. 'comentado' existe porque nem todo
+        time usa o botao de aprovar: saber que alguem ja olhou e comentou ainda
+        distingue o PR revisado do PR em que ninguem encostou.
+        """
+        try:
+            lista = self._get("%s/repos/%s/pulls/%s/reviews?per_page=100"
+                              % (API, org_repo, numero))
+        except StepError:
+            return ""
+        if not isinstance(lista, list):
+            return ""
+        por_pessoa = {}
+        for revisao in lista:
+            estado = (revisao.get("state") or "").upper()
+            if estado in ("APPROVED", "CHANGES_REQUESTED", "COMMENTED"):
+                por_pessoa[((revisao.get("user") or {}).get("login") or "?")] = estado
+        estados = set(por_pessoa.values())
+        if "CHANGES_REQUESTED" in estados:
+            return "ajustes"
+        if "APPROVED" in estados:
+            return "aprovado"
+        if "COMMENTED" in estados:
+            return "comentado"
+        return ""
+
+    def revisoes(self, prs, trabalhadores=8, progresso=None):
+        """{(repo, numero): estado} para varios PRs, em paralelo."""
+        import concurrent.futures
+
+        resultado = {}
+        if not prs:
+            return resultado
+        with concurrent.futures.ThreadPoolExecutor(max_workers=trabalhadores) as executor:
+            futuros = {
+                executor.submit(self.revisao, pr["repo"], pr["numero"]): (pr["repo"], pr["numero"])
+                for pr in prs
+            }
+            for i, futuro in enumerate(concurrent.futures.as_completed(futuros), 1):
+                chave = futuros[futuro]
+                try:
+                    resultado[chave] = futuro.result()
+                except Exception:
+                    resultado[chave] = ""
+                if progresso and i % 25 == 0:
+                    progresso(i, len(futuros))
+        return resultado
+
     def prs_abertos(self, org_repo, maximo_paginas=6):
         """Lista simplificada dos PRs abertos de um repositorio."""
         saida, pagina = [], 1

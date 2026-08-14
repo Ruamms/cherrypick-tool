@@ -164,7 +164,7 @@ def commit_do_pr(repo, ref_main, numero):
 
 
 def resolver_repos(texto, repo_local, log):
-    """Aceita 'org/repo' ou o caminho de um clone; devolve sempre 'org/repo'.
+    """Aceita 'org/repo' ou o caminho de um clone; devolve (lista, {repo: caminho}).
 
     Caminho de pasta e resolvido pelo remote origin daquele clone - foi o engano
     mais facil de cometer, e e tambem o que faz o git escolher a conta certa.
@@ -174,7 +174,7 @@ def resolver_repos(texto, repo_local, log):
     itens = [p.strip() for p in (texto or "").replace(";", ",").split(",") if p.strip()]
     if not itens and repo_local:
         itens = [repo_local]
-    resolvidos = []
+    resolvidos, locais = [], {}
     for item in itens:
         if os.path.isdir(item):
             ok, url = git_ok(item, ["remote", "get-url", "origin"])
@@ -189,9 +189,11 @@ def resolver_repos(texto, repo_local, log):
                 "'%s' nao e 'org/repo' nem uma pasta de clone existente." % item)
         if nome not in resolvidos:
             resolvidos.append(nome)
+            if os.path.isdir(item):
+                locais[nome] = item
     if not resolvidos:
         raise StepError("Informe ao menos um repositorio (org/repo ou a pasta de um clone).")
-    return resolvidos
+    return resolvidos, locais
 
 
 def analisar(repo, producao, principal, dias, log):
@@ -899,17 +901,22 @@ def main():
         tk.Label(legenda_c, text=situacao, fg=mod_ciclo.CORES_CICLO[situacao],
                  font=("TkDefaultFont", 9, "bold")).grid(row=i, column=1, sticky="w", padx=(8, 6))
         tk.Label(legenda_c, text="= " + texto, fg="#444").grid(row=i, column=2, sticky="w")
+    tk.Label(legenda_c, fg="#0a4fb0", text=(
+        "Clique na celula de PR PRINCIPAL / PR PRODUCAO / PR OUTRAS BRANCHES para abrir "
+        "o PR no navegador."
+    )).grid(row=len(mod_ciclo.LEGENDA_CICLO), column=1, columnspan=2, sticky="w",
+            padx=(8, 0), pady=(2, 0))
     tk.Label(legenda_c, fg="#777", text=(
         "So enxerga PR ABERTO: o que ja foi mergeado sai do radar, e por isso a pendencia diz "
         "'sem PR aberto para producao', nao 'nao esta na producao'."
-    )).grid(row=len(mod_ciclo.LEGENDA_CICLO), column=1, columnspan=2, sticky="w",
-            padx=(8, 0), pady=(2, 0))
+    )).grid(row=len(mod_ciclo.LEGENDA_CICLO) + 1, column=1, columnspan=2, sticky="w",
+            padx=(8, 0))
 
     corpo_c = tk.Frame(aba_ciclo, padx=10, pady=8)
     corpo_c.pack(fill="both", expand=True)
     colunas_c = ("pendencia", "tarefa", "tipo", "status", "principal", "producao",
                  "outros", "build", "dias", "assunto")
-    larguras_c = (150, 70, 100, 110, 90, 90, 105, 110, 45, 360)
+    larguras_c = (150, 65, 95, 105, 165, 165, 105, 105, 40, 300)
     titulos_c = {"principal": "PR PRINCIPAL", "producao": "PR PRODUCAO",
                  "outros": "PR OUTRAS BRANCHES", "build": "BUILD (X5)",
                  "dias": "DIAS", "pendencia": "PENDENCIA", "tarefa": "TAREFA",
@@ -935,6 +942,34 @@ def main():
             status.config(text=marcadas[0]["detalhe"], fg="#333")
 
     grid_c.bind("<<TreeviewSelect>>", on_select_c)
+
+    COLUNAS_LINK = {"#5": "principal", "#6": "producao", "#7": "outros"}
+
+    def _links_da_celula(evento):
+        """URLs do PR sob o cursor, ou [] se a celula nao for de PR."""
+        if grid_c.identify_region(evento.x, evento.y) != "cell":
+            return []
+        lado = COLUNAS_LINK.get(grid_c.identify_column(evento.x))
+        item = grid_c.identify_row(evento.y)
+        if not lado or not item:
+            return []
+        try:
+            linha = ciclo_dados[int(item)]
+        except (ValueError, IndexError):
+            return []
+        return (linha.get("urls") or {}).get(lado, [])
+
+    def clicar_celula(evento):
+        for url in _links_da_celula(evento)[:4]:
+            log("abrindo %s" % url)
+            webbrowser.open(url, new=2)
+
+    def mover_no_grid(evento):
+        grid_c.config(cursor="hand2" if _links_da_celula(evento) else "")
+
+    grid_c.bind("<Button-1>", clicar_celula, add="+")
+    grid_c.bind("<Motion>", mover_no_grid)
+    grid_c.bind("<Leave>", lambda _e: grid_c.config(cursor=""))
 
     def _num_pr(texto):
         numeros = re.findall(r"\d+", texto or "")
@@ -1063,7 +1098,7 @@ def main():
         def work():
             log("")
             log("--- repositorios ---")
-            repos = resolver_repos(repos_var.get(), repo_var.get().strip(), log)
+            repos, locais = resolver_repos(repos_var.get(), repo_var.get().strip(), log)
             log("  %s" % ", ".join(repos))
             usuario, segredo = github_prs.credencial_escolhida(
                 conta_var.get(), repo_var.get().strip() or None, repos[0])
@@ -1123,11 +1158,43 @@ def main():
             else:
                 log("OpenProject nao configurado: o tipo sai do titulo do PR.")
 
+            log("")
+            log("--- revisoes dos PRs abertos ---")
+            revisoes = gh.revisoes(prs, progresso=lambda i, n: log("  %d/%d" % (i, n)))
+            aprovados = sum(1 for v in revisoes.values() if v == "aprovado")
+            log("  %d aprovado(s), %d com pedido de ajuste" % (
+                aprovados, sum(1 for v in revisoes.values() if v == "ajustes")))
+
+            # historico local: separa "mergeado" de "PR nao aberto"
+            nome_prod = prod_c_var.get().strip() or prod_var.get().strip() or "producao"
+            nome_main = main_var.get().strip() or "master"
+            historico = {"principal": None, "producao": None}
+            if locais:
+                log("")
+                log("--- historico local (para saber o que ja foi mergeado) ---")
+                for lado, branch in (("principal", nome_main), ("producao", nome_prod)):
+                    numeros = set()
+                    achou = False
+                    for nome_repo, caminho in locais.items():
+                        ref = "origin/" + strip_origin(branch)
+                        if not _ref_valida(caminho, ref):
+                            log("  %s: %s nao existe no clone" % (nome_repo, ref))
+                            continue
+                        _assuntos, ops, total = indice_producao(caminho, ref)
+                        numeros |= set(ops)
+                        achou = True
+                        log("  %s %s: %d commits" % (nome_repo, ref, total))
+                    if achou:
+                        historico[lado] = numeros
+            else:
+                log("")
+                log("Sem clone local informado: nao da para distinguir 'mergeado' de "
+                    "'PR nao aberto' (informe a pasta do clone no campo Repositorios).")
+
             linhas = mod_ciclo.montar(
-                prs, tarefas,
-                prod_c_var.get().strip() or prod_var.get().strip() or "producao",
-                main_var.get().strip() or "master",
+                prs, tarefas, nome_prod, nome_main,
                 state.get("tipos_exigem", []), state.get("status_libera", []), int(dias_p),
+                revisoes=revisoes, historico=historico,
             )
             resultado_ciclo["linhas"] = linhas
             resultado_ciclo["autores"] = sorted({p["autor"] for p in prs if p["autor"]})

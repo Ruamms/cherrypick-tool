@@ -1,13 +1,20 @@
-"""Cruza PRs abertos (GitHub) com work packages (OpenProject).
+"""Cruza PRs abertos (GitHub) com work packages (OpenProject) e com o git local.
 
 Regra do processo: certos tipos de tarefa - tipicamente corretiva e divida
 tecnica - precisam chegar na branch de producao, e nao so na principal. Outros
 tipos ficam so na principal. Quais tipos exigem o que e configuravel: nada aqui
 presume o processo de nenhuma empresa.
 
-Escopo desta versao: **so PR aberto**. Se ninguem abriu o PR de producao, aparece
-como pendencia; se o PR ja foi mergeado, ele sai do radar - por isso a pendencia
-se chama "sem PR aberto para producao", e nao "nao esta na producao".
+Cada lado (principal e producao) vira uma frase, nao um numero de PR:
+
+    mergeado                 - a tarefa aparece no historico daquela branch
+    aprovado, falta mergear  - PR aberto e ja aprovado na revisao
+    comentado, sem aprovar   - alguem revisou e comentou, mas nao aprovou
+    revisao pediu ajuste     - PR aberto com pedido de mudanca
+    aguardando aprovacao     - PR aberto, sem revisao ainda
+    rascunho                 - PR aberto como draft
+    PR nao aberto            - nada aberto e nada no historico daquela branch
+    sem PR aberto            - nada aberto e nao havia clone local para conferir
 """
 
 import datetime
@@ -34,15 +41,25 @@ CORES_CICLO = {
 
 LEGENDA_CICLO = (
     (MERGEAR, "a tarefa esta num status de concluida e o PR continua aberto - e so mergear"),
-    (SEM_PROD, "o tipo exige producao e nao ha PR aberto para a branch de producao"),
+    (SEM_PROD, "o tipo exige producao e nao ha PR aberto nem nada no historico da branch"),
     (APROVAR, "existe PR aberto para a producao esperando revisao/aprovacao ha N dias"),
     (SEM_BUILD, "tarefa concluida, sem PR aberto, e com o campo de build vazio"),
     (PARADO, "PR aberto sem nenhuma atualizacao ha mais dias que o limite"),
-    (OK, "nada a fazer pelo que da para ver dos PRs abertos"),
+    (OK, "nada a fazer pelo que da para ver"),
 )
 
+# situacoes de cada lado
+MERGEADO = "mergeado"
+APROVADO = "aprovado, falta mergear"
+AJUSTES = "revisao pediu ajuste"
+AGUARDANDO = "aguardando aprovacao"
+COMENTADO = "comentado, sem aprovar"
+RASCUNHO = "rascunho"
+SEM_PR = "PR nao aberto"
+NAO_CONFERIDO = "sem PR aberto"
+
 # tipos de manutencao mais comuns, usados so como reserva quando a tarefa nao
-# esta na query do OpenProject: o titulo do PR costuma trazer a natureza.
+# esta no gerenciador: o titulo do PR costuma trazer a natureza.
 TIPOS_CONHECIDOS = ("divida tecnica", "corretiva", "adaptativa", "evolutiva", "regressao")
 
 
@@ -84,14 +101,46 @@ def _dias_desde(texto_data, hoje):
     return (hoje - data).days
 
 
+def situacao_do_lado(prs_do_lado, revisoes, tarefa, historico, hoje):
+    """(frase, ja_esta_la) descrevendo um lado - principal ou producao.
+
+    historico: numeros de tarefa vistos no historico daquela branch, ou None
+    quando nao havia clone local para conferir.
+    """
+    if prs_do_lado:
+        partes = []
+        for pr in prs_do_lado:
+            estado = revisoes.get((pr.get("repo"), pr.get("numero")), "")
+            if pr.get("rascunho"):
+                texto = RASCUNHO
+            elif estado == "aprovado":
+                texto = APROVADO
+            elif estado == "ajustes":
+                texto = AJUSTES
+            elif estado == "comentado":
+                texto = "%s (%dd)" % (COMENTADO, _dias_desde(pr.get("atualizado", ""), hoje))
+            else:
+                texto = "%s (%dd)" % (AGUARDANDO, _dias_desde(pr.get("atualizado", ""), hoje))
+            partes.append("%s #%s" % (texto, pr.get("numero")))
+        return ", ".join(partes), False
+    if historico is None:
+        return NAO_CONFERIDO, False
+    if tarefa and tarefa in historico:
+        return MERGEADO, True
+    return SEM_PR, False
+
+
 def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
-           status_libera, dias_parado=7, hoje=None):
+           status_libera, dias_parado=7, hoje=None, revisoes=None, historico=None):
     """Agrupa os PRs abertos por tarefa e aponta a pendencia de cada uma.
 
-    tarefas: {numero: {"tipo","status","assunto","build"}} vindo do OpenProject.
-    tipos_exigem / status_libera: nomes escolhidos pelo usuario (sem acento, minusculo).
+    tarefas: {numero: {"tipo","status","fechado","assunto","build"}} do gerenciador.
+    revisoes: {(repo, numero_pr): "aprovado"|"ajustes"|""}.
+    historico: {"principal": set|None, "producao": set|None}.
     """
     hoje = hoje or datetime.date.today()
+    revisoes = revisoes or {}
+    historico = historico or {}
     exigem = {sem_acento(t) for t in tipos_exigem}
     libera = {sem_acento(s) for s in status_libera}
 
@@ -108,13 +157,19 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
         tarefa = grupo["tarefa"]
         dados = tarefas.get(tarefa, {})
         tipo = dados.get("tipo") or tipo_do_titulo(prs_do_grupo[0].get("titulo", ""))
-        origem_tipo = "OpenProject" if dados.get("tipo") else (
+        origem_tipo = "gerenciador" if dados.get("tipo") else (
             "titulo do PR" if tipo else "nao identificado")
         status_wp = dados.get("status", "")
 
         para_prod = [p for p in prs_do_grupo if e_producao(p["base"], base_producao)]
-        para_principal = [p for p in prs_do_grupo if sem_acento(p["base"]) == sem_acento(base_principal)]
+        para_principal = [p for p in prs_do_grupo
+                          if sem_acento(p["base"]) == sem_acento(base_principal)]
         outros = [p for p in prs_do_grupo if p not in para_prod and p not in para_principal]
+
+        texto_principal, _ = situacao_do_lado(
+            para_principal, revisoes, tarefa, historico.get("principal"), hoje)
+        texto_prod, prod_mergeado = situacao_do_lado(
+            para_prod, revisoes, tarefa, historico.get("producao"), hoje)
 
         idade = max((_dias_desde(p["atualizado"], hoje) for p in prs_do_grupo), default=0)
         idade_prod = max((_dias_desde(p["atualizado"], hoje) for p in para_prod), default=0)
@@ -126,15 +181,12 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             pendencia = MERGEAR
             detalhe = ("tarefa em '%s' (status de concluida) com %d PR(s) ainda aberto(s)"
                        % (status_wp, len(prs_do_grupo)))
-        elif exige_producao and not para_prod:
+        elif exige_producao and not para_prod and not prod_mergeado:
             pendencia = SEM_PROD
-            detalhe = ("tipo '%s' exige producao e nao ha PR aberto para %s "
-                       "(pode ja ter sido mergeado)" % (tipo, base_producao))
+            detalhe = "tipo '%s' exige producao e la esta '%s'" % (tipo, texto_prod)
         elif para_prod:
             pendencia = APROVAR
-            detalhe = ("PR %s aberto para %s ha %d dias, esperando aprovacao"
-                       % (", ".join("#%s" % p["numero"] for p in para_prod),
-                          base_producao, idade_prod))
+            detalhe = "producao: %s (ha %d dias)" % (texto_prod, idade_prod)
         elif concluida and not prs_do_grupo and not build:
             pendencia = SEM_BUILD
             detalhe = "tarefa concluida e sem o campo de build preenchido"
@@ -153,14 +205,20 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             "status_wp": status_wp or "-",
             "build": dados.get("build", ""),
             "assunto": dados.get("assunto") or prs_do_grupo[0].get("titulo", ""),
-            "pr_principal": ", ".join("#%s" % p["numero"] for p in para_principal) or "-",
-            "pr_producao": ", ".join("#%s" % p["numero"] for p in para_prod) or "-",
+            "pr_principal": texto_principal,
+            "pr_producao": texto_prod,
             "pr_outros": ", ".join("#%s(%s)" % (p["numero"], p["base"]) for p in outros),
             "autores": sorted({p["autor"] for p in prs_do_grupo}),
             "idade": idade,
             "pendencia": pendencia,
             "detalhe": detalhe,
             "prs": prs_do_grupo,
+            # links por coluna, para o clique na celula abrir no navegador
+            "urls": {
+                "principal": [p["url"] for p in para_principal if p.get("url")],
+                "producao": [p["url"] for p in para_prod if p.get("url")],
+                "outros": [p["url"] for p in outros if p.get("url")],
+            },
         })
 
     # tarefas sem PR aberto (vieram da query salva) so entram se apontarem pendencia:
@@ -172,16 +230,20 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             sem_acento(dados.get("status", "")) in libera if libera else False)
         if not (concluida and not dados.get("build")):
             continue
+        principal = historico.get("principal")
+        producao = historico.get("producao")
         linhas.append({
             "tarefa": numero, "chave": numero,
-            "tipo": dados.get("tipo", "-"), "origem_tipo": "OpenProject",
+            "tipo": dados.get("tipo", "-"), "origem_tipo": "gerenciador",
             "status_wp": dados.get("status", "-"), "build": "",
             "assunto": dados.get("assunto", ""),
-            "pr_principal": "-", "pr_producao": "-", "pr_outros": "",
+            "pr_principal": MERGEADO if principal and numero in principal else NAO_CONFERIDO,
+            "pr_producao": MERGEADO if producao and numero in producao else NAO_CONFERIDO,
+            "pr_outros": "",
             "autores": [], "idade": 0,
             "pendencia": SEM_BUILD,
             "detalhe": "tarefa concluida e sem o campo de build preenchido",
-            "prs": [],
+            "prs": [], "urls": {"principal": [], "producao": [], "outros": []},
         })
 
     linhas.sort(key=lambda x: (ORDEM_CICLO.get(x["pendencia"], 9), -x["idade"]))
