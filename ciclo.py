@@ -16,21 +16,27 @@ import unicodedata
 
 MERGEAR = "PODE MERGEAR"
 SEM_PROD = "SEM PR DE PRODUCAO"
+APROVAR = "AGUARDA APROVACAO"
+SEM_BUILD = "FALTA A BUILD (X5)"
 PARADO = "PARADO"
 OK = "OK"
 
-ORDEM_CICLO = {MERGEAR: 0, SEM_PROD: 1, PARADO: 2, OK: 3}
+ORDEM_CICLO = {MERGEAR: 0, SEM_PROD: 1, APROVAR: 2, SEM_BUILD: 3, PARADO: 4, OK: 5}
 
 CORES_CICLO = {
     MERGEAR: "#0a7a0a",
     SEM_PROD: "#b00000",
+    APROVAR: "#0a4fb0",
+    SEM_BUILD: "#8a5a00",
     PARADO: "#b06000",
     OK: "#707070",
 }
 
 LEGENDA_CICLO = (
-    (MERGEAR, "a tarefa ja passou no teste e o PR continua aberto - da para mergear agora"),
+    (MERGEAR, "a tarefa esta num status de concluida e o PR continua aberto - e so mergear"),
     (SEM_PROD, "o tipo exige producao e nao ha PR aberto para a branch de producao"),
+    (APROVAR, "existe PR aberto para a producao esperando revisao/aprovacao ha N dias"),
+    (SEM_BUILD, "tarefa concluida, sem PR aberto, e com o campo de build vazio"),
     (PARADO, "PR aberto sem nenhuma atualizacao ha mais dias que o limite"),
     (OK, "nada a fazer pelo que da para ver dos PRs abertos"),
 )
@@ -111,15 +117,27 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
         outros = [p for p in prs_do_grupo if p not in para_prod and p not in para_principal]
 
         idade = max((_dias_desde(p["atualizado"], hoje) for p in prs_do_grupo), default=0)
+        idade_prod = max((_dias_desde(p["atualizado"], hoje) for p in para_prod), default=0)
         exige_producao = sem_acento(tipo) in exigem if tipo else False
+        concluida = dados.get("fechado") or (sem_acento(status_wp) in libera if libera else False)
+        build = dados.get("build", "")
 
-        if libera and sem_acento(status_wp) in libera:
+        if concluida and prs_do_grupo:
             pendencia = MERGEAR
-            detalhe = "tarefa em '%s' com %d PR(s) aberto(s)" % (status_wp, len(prs_do_grupo))
+            detalhe = ("tarefa em '%s' (status de concluida) com %d PR(s) ainda aberto(s)"
+                       % (status_wp, len(prs_do_grupo)))
         elif exige_producao and not para_prod:
             pendencia = SEM_PROD
             detalhe = ("tipo '%s' exige producao e nao ha PR aberto para %s "
                        "(pode ja ter sido mergeado)" % (tipo, base_producao))
+        elif para_prod:
+            pendencia = APROVAR
+            detalhe = ("PR %s aberto para %s ha %d dias, esperando aprovacao"
+                       % (", ".join("#%s" % p["numero"] for p in para_prod),
+                          base_producao, idade_prod))
+        elif concluida and not prs_do_grupo and not build:
+            pendencia = SEM_BUILD
+            detalhe = "tarefa concluida e sem o campo de build preenchido"
         elif idade >= dias_parado:
             pendencia = PARADO
             detalhe = "sem atualizacao ha %d dias" % idade
@@ -143,6 +161,27 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             "pendencia": pendencia,
             "detalhe": detalhe,
             "prs": prs_do_grupo,
+        })
+
+    # tarefas sem PR aberto (vieram da query salva) so entram se apontarem pendencia:
+    # concluidas e sem build preenchido - o "ja foi feito e o X5 ficou vazio"
+    for numero, dados in tarefas.items():
+        if numero in grupos:
+            continue
+        concluida = dados.get("fechado") or (
+            sem_acento(dados.get("status", "")) in libera if libera else False)
+        if not (concluida and not dados.get("build")):
+            continue
+        linhas.append({
+            "tarefa": numero, "chave": numero,
+            "tipo": dados.get("tipo", "-"), "origem_tipo": "OpenProject",
+            "status_wp": dados.get("status", "-"), "build": "",
+            "assunto": dados.get("assunto", ""),
+            "pr_principal": "-", "pr_producao": "-", "pr_outros": "",
+            "autores": [], "idade": 0,
+            "pendencia": SEM_BUILD,
+            "detalhe": "tarefa concluida e sem o campo de build preenchido",
+            "prs": [],
         })
 
     linhas.sort(key=lambda x: (ORDEM_CICLO.get(x["pendencia"], 9), -x["idade"]))

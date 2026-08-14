@@ -134,17 +134,23 @@ Ela cruza duas fontes e não depende do `gh` CLI:
   a aba funciona igual, deduzindo o tipo do título do PR. Campos personalizados são lidos tanto
   do corpo quanto de `_links` — listas e opções só aparecem lá.
 
-| Situação | Significa |
-| -------- | --------- |
-| **PODE MERGEAR** (verde) | a tarefa está num status que você marcou como liberado e o PR continua aberto |
-| **SEM PR DE PRODUCAO** (vermelho) | o tipo exige produção e não há PR aberto para essa branch |
-| **PARADO** (laranja) | PR aberto sem nenhuma atualização há mais dias que o limite |
-| **OK** (cinza) | nada a fazer pelo que dá para ver dos PRs abertos |
+| Situação | Significa | O que fazer |
+| -------- | --------- | ----------- |
+| **PODE MERGEAR** (verde) | a tarefa está num status de **concluída** e o PR continua aberto | mergear — é trabalho pronto parado |
+| **SEM PR DE PRODUCAO** (vermelho) | o tipo exige produção e não há PR aberto para essa branch | abrir o backport (a aba git faz isso) |
+| **AGUARDA APROVACAO** (azul) | existe PR aberto para a produção esperando revisão há N dias | cobrar revisão |
+| **FALTA A BUILD (X5)** (âmbar) | tarefa concluída, sem PR aberto, e o campo de build vazio | preencher a versão no card |
+| **PARADO** (laranja) | PR aberto sem nenhuma atualização há mais dias que o limite | decidir: retomar ou fechar |
+| **OK** (cinza) | nada a fazer pelo que dá para ver dos PRs abertos | — |
+
+"Status de concluída" não é adivinhação pelo nome: vem do próprio gerenciador, que marca cada
+status com `isClosed`. O botão **Status que liberam merge** serve para incluir também status
+intermediários (um "teste aprovado", por exemplo) que a instância não considera fechados.
 
 Os PRs são agrupados por **número da tarefa**, tirado do nome do branch (`fb_123456_2601`) ou
-do título, então as duas pontas de uma mesma tarefa aparecem na mesma linha — uma coluna para
-a principal, outra para a produção, e uma terceira para PRs abertos contra outras branches
-(outras linhas de release, por exemplo).
+do título, então as duas pontas de uma mesma tarefa aparecem na mesma linha. As colunas
+**PR PRINCIPAL**, **PR PRODUCAO** e **PR OUTRAS BRANCHES** mostram o número do PR aberto para
+cada destino (`-` quando não há), e **BUILD (X5)** mostra o campo de build da tarefa.
 
 **Escopo desta versão: só PR aberto.** O que já foi mergeado sai do radar. Por isso a pendência
 se chama *sem PR aberto para produção* e não *não está na produção* — para saber isso, use a

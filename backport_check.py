@@ -386,8 +386,8 @@ def main():
 
     root = tk.Tk()
     root.title("BackportCheck - o que falta na producao")
-    root.geometry("1260x910")
-    root.minsize(980, 720)
+    root.geometry("1300x960")
+    root.minsize(1000, 760)
 
     state = load_state()
     log_queue = queue.Queue()
@@ -592,6 +592,7 @@ def main():
             "autor_ciclo": "" if autor_c_var.get() == TODOS else autor_c_var.get(),
             "dias_parado": dias_parado_var.get().strip() or "7",
             "conta": conta_var.get(),
+            "producao_ciclo": prod_c_var.get().strip(),
         })
         save_state(state)
 
@@ -757,7 +758,7 @@ def main():
     import github_prs
     from openproject import OpenProject, desproteger, titulo_do_link
 
-    ciclo_cache = {"linhas": [], "tipos": [], "status": [], "usuario": ""}
+    ciclo_cache = {"linhas": [], "tipos": [], "status": [], "fechados": [], "usuario": ""}
     ciclo_dados = []
     resultado_ciclo = {}
 
@@ -811,29 +812,35 @@ def main():
     autor_c_combo = ttk.Combobox(topo_c, textvariable=autor_c_var, width=26, state="readonly")
     autor_c_combo["values"] = [TODOS] + ([state["autor_ciclo"]] if state.get("autor_ciclo") else [])
     autor_c_combo.grid(row=3, column=1, sticky="w", pady=2)
-    tk.Label(topo_c, text="Parado apos (dias)").grid(row=3, column=2, sticky="e", padx=(12, 6))
+    tk.Label(topo_c, text="Branch de producao").grid(row=3, column=2, sticky="e", padx=(12, 6))
+    prod_c_var = tk.StringVar(value=state.get("producao_ciclo", "") or state.get("producao", ""))
+    campo_prod_c = tk.Entry(topo_c, textvariable=prod_c_var, width=16)
+    campo_prod_c.grid(row=3, column=3, sticky="w")
+    dica(campo_prod_c, prod_c_var, "release-2601")
+
+    tk.Label(topo_c, text="Parado apos (dias)").grid(row=4, column=2, sticky="e", padx=(12, 6))
     dias_parado_var = tk.StringVar(value=str(state.get("dias_parado", "7")))
-    tk.Entry(topo_c, textvariable=dias_parado_var, width=5).grid(row=3, column=3, sticky="w")
-    tk.Label(topo_c, text="Conta do GitHub").grid(row=4, column=0, sticky="w", pady=2)
+    tk.Entry(topo_c, textvariable=dias_parado_var, width=5).grid(row=4, column=3, sticky="w")
+    tk.Label(topo_c, text="Conta do GitHub").grid(row=5, column=0, sticky="w", pady=2)
     contas = [github_prs.AUTOMATICA, github_prs.PADRAO_GIT] + [
         u for _alvo, u in github_prs.contas_guardadas()]
     conta_var = tk.StringVar(value=state.get("conta", github_prs.AUTOMATICA))
     conta_combo = ttk.Combobox(topo_c, textvariable=conta_var, width=26, state="readonly",
                                values=contas)
-    conta_combo.grid(row=4, column=1, sticky="w", pady=2)
+    conta_combo.grid(row=5, column=1, sticky="w", pady=2)
     if conta_var.get() not in contas:
         conta_var.set(github_prs.AUTOMATICA)
     rotulo_conta = tk.Label(topo_c, text="", fg="#0a7a0a")
-    rotulo_conta.grid(row=4, column=2, columnspan=3, sticky="w", padx=(12, 0))
+    rotulo_conta.grid(row=5, column=2, columnspan=3, sticky="w", padx=(12, 0))
 
     tk.Label(topo_c, fg="#666", justify="left", text=(
         "Query salva: o numero que aparece na URL do OpenProject como ?query_id=1234 - e a visao "
         "ja filtrada do seu time.   |   Parado apos: dias sem nenhuma atualizacao no PR."
-    )).grid(row=5, column=0, columnspan=5, sticky="w", pady=(6, 0))
+    )).grid(row=6, column=0, columnspan=5, sticky="w", pady=(6, 0))
     tk.Label(topo_c, fg="#666", justify="left", text=(
         "O token e guardado cifrado nesta maquina (DPAPI) e volta preenchido na proxima vez. "
         "Nunca use a sua senha: gere um token em Minha conta -> Tokens de acesso."
-    )).grid(row=6, column=0, columnspan=5, sticky="w")
+    )).grid(row=7, column=0, columnspan=5, sticky="w")
 
     btns_c = tk.Frame(aba_ciclo, padx=10)
     btns_c.pack(fill="x")
@@ -861,11 +868,16 @@ def main():
 
     corpo_c = tk.Frame(aba_ciclo, padx=10, pady=8)
     corpo_c.pack(fill="both", expand=True)
-    colunas_c = ("pendencia", "tarefa", "tipo", "status", "principal", "producao", "outros", "dias", "assunto")
-    larguras_c = (150, 70, 105, 115, 80, 80, 110, 45, 420)
+    colunas_c = ("pendencia", "tarefa", "tipo", "status", "principal", "producao",
+                 "outros", "build", "dias", "assunto")
+    larguras_c = (150, 70, 100, 110, 90, 90, 105, 110, 45, 360)
+    titulos_c = {"principal": "PR PRINCIPAL", "producao": "PR PRODUCAO",
+                 "outros": "PR OUTRAS BRANCHES", "build": "BUILD (X5)",
+                 "dias": "DIAS", "pendencia": "PENDENCIA", "tarefa": "TAREFA",
+                 "tipo": "TIPO", "status": "STATUS", "assunto": "ASSUNTO"}
     grid_c = ttk.Treeview(corpo_c, columns=colunas_c, show="headings", selectmode="extended", height=13)
     for col, larg in zip(colunas_c, larguras_c):
-        grid_c.heading(col, text=col.upper())
+        grid_c.heading(col, text=titulos_c.get(col, col.upper()))
         grid_c.column(col, width=larg, anchor="w", stretch=(col == "assunto"))
     barra_c = ttk.Scrollbar(corpo_c, orient="vertical", command=grid_c.yview)
     grid_c.configure(yscrollcommand=barra_c.set)
@@ -894,15 +906,17 @@ def main():
         for i, l in enumerate(linhas):
             grid_c.insert("", "end", iid=str(i), tags=(l["pendencia"],), values=(
                 l["pendencia"], l["tarefa"], l["tipo"][:14], l["status_wp"][:16],
-                l["pr_principal"], l["pr_producao"], l["pr_outros"][:16], l["idade"],
-                l["assunto"],
+                l["pr_principal"], l["pr_producao"], l["pr_outros"][:16],
+                l["build"] or "-", l["idade"], l["assunto"],
             ))
         contagem = {}
         for l in linhas:
             contagem[l["pendencia"]] = contagem.get(l["pendencia"], 0) + 1
-        resumo = "%d tarefa(s): %d pode(m) mergear, %d sem PR de producao, %d parada(s)." % (
-            len(linhas), contagem.get(mod_ciclo.MERGEAR, 0),
-            contagem.get(mod_ciclo.SEM_PROD, 0), contagem.get(mod_ciclo.PARADO, 0))
+        resumo = ("%d tarefa(s): %d pode(m) mergear, %d sem PR de producao, "
+                  "%d aguardando aprovacao, %d sem build, %d parada(s)." % (
+                      len(linhas), contagem.get(mod_ciclo.MERGEAR, 0),
+                      contagem.get(mod_ciclo.SEM_PROD, 0), contagem.get(mod_ciclo.APROVAR, 0),
+                      contagem.get(mod_ciclo.SEM_BUILD, 0), contagem.get(mod_ciclo.PARADO, 0)))
         status.config(text=resumo, fg="#333")
         return resumo
 
@@ -948,8 +962,13 @@ def main():
             do_carregar_ciclo()
 
     def do_status():
-        escolha = escolher_varios("Status que indicam que a tarefa ja pode ser mergeada:",
-                                  ciclo_cache["status"], state.get("status_libera", []))
+        # os status marcados como fechados na propria instancia ja contam por si;
+        # aqui e so para incluir status intermediarios (ex.: um "teste aprovado")
+        ja = state.get("status_libera") or ciclo_cache.get("fechados", [])
+        escolha = escolher_varios(
+            "Status que indicam tarefa pronta para mergear -- os marcados como "
+            "concluida no proprio OpenProject ja contam automaticamente:",
+            ciclo_cache["status"], ja)
         if escolha is None:
             return
         state["status_libera"] = escolha
@@ -961,6 +980,7 @@ def main():
         ciclo_cache["linhas"] = resultado_ciclo.get("linhas", [])
         ciclo_cache["tipos"] = resultado_ciclo.get("tipos_vistos", [])
         ciclo_cache["status"] = resultado_ciclo.get("status_vistos", [])
+        ciclo_cache["fechados"] = resultado_ciclo.get("status_fechados", [])
         autores = resultado_ciclo.get("autores", [])
         autor_c_combo["values"] = [TODOS] + autores
         if autor_c_var.get() not in [TODOS] + autores:
@@ -969,7 +989,8 @@ def main():
         log("")
         log(render_ciclo())
         if not state.get("tipos_exigem"):
-            log("Nenhum tipo marcado como 'exige producao' - use o botao 'Tipos que exigem producao...'.")
+            log("Nenhum tipo marcado em 'Tipos que exigem producao...' - sem isso, nenhuma "
+                "tarefa e cobrada por falta de PR de producao.")
 
     def do_carregar_ciclo():
         salvar()
@@ -1004,6 +1025,12 @@ def main():
                 log("--- OpenProject ---")
                 cliente = OpenProject(url_op, token)
                 log("  conectado como %s" % cliente.eu())
+                try:
+                    fechados = set(cliente.status_fechados())
+                    log("  status de concluida (isClosed): %s" % (", ".join(sorted(fechados)) or "-"))
+                except StepError as exc:
+                    fechados = set()
+                    log("  nao consegui ler os status: %s" % exc)
                 # os numeros que interessam sao os das tarefas com PR aberto;
                 # a query salva e so um complemento opcional
                 numeros = sorted({mod_ciclo.tarefa_do_pr(p) for p in prs if mod_ciclo.tarefa_do_pr(p)})
@@ -1021,9 +1048,11 @@ def main():
                     campos = cliente.campos_customizados(wp, nomes)
                     build = next((v for k, v in campos.items()
                                   if str(k).strip().upper().startswith("X5")), "")
+                    situacao = titulo_do_link(wp, "status")
                     tarefas[str(wp.get("id"))] = {
                         "tipo": titulo_do_link(wp, "type"),
-                        "status": titulo_do_link(wp, "status"),
+                        "status": situacao,
+                        "fechado": situacao in fechados,
                         "assunto": wp.get("subject", ""),
                         "build": build,
                     }
@@ -1035,7 +1064,8 @@ def main():
 
             linhas = mod_ciclo.montar(
                 prs, tarefas,
-                prod_var.get().strip() or "producao", main_var.get().strip() or "master",
+                prod_c_var.get().strip() or prod_var.get().strip() or "producao",
+                main_var.get().strip() or "master",
                 state.get("tipos_exigem", []), state.get("status_libera", []), int(dias_p),
             )
             resultado_ciclo["linhas"] = linhas
@@ -1044,6 +1074,7 @@ def main():
             resultado_ciclo["tipos_vistos"] = sorted({l["tipo"] for l in linhas if l["tipo"] != "-"})
             resultado_ciclo["status_vistos"] = sorted(
                 {l["status_wp"] for l in linhas if l["status_wp"] != "-"})
+            resultado_ciclo["status_fechados"] = sorted(fechados) if url_op and token else []
 
         in_thread(work, "Ciclo carregado.", depois=concluir_ciclo)
 

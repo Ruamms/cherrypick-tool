@@ -125,6 +125,16 @@ class OpenProject(object):
         dados = self._get("/api/v3/types")
         return [t.get("name", "") for t in dados.get("_embedded", {}).get("elements", [])]
 
+    def status_fechados(self):
+        """Nomes dos status marcados como 'fechado' na propria instancia.
+
+        E o unico sinal objetivo de 'a tarefa terminou' que a API oferece - melhor
+        do que adivinhar pelo nome do status.
+        """
+        dados = self._get("/api/v3/statuses")
+        return [s.get("name", "") for s in dados.get("_embedded", {}).get("elements", [])
+                if s.get("isClosed")]
+
     def work_packages_da_query(self, query_id):
         """Resultados de uma query salva (o mesmo query_id da URL do navegador)."""
         dados = self._get("/api/v3/queries/%s" % query_id)
