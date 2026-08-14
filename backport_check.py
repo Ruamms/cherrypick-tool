@@ -367,6 +367,27 @@ def main():
     def log(msg=""):
         log_queue.put(msg)
 
+    def dica(entry, var, texto):
+        """Exemplo em cinza dentro do campo vazio.
+
+        E um rotulo posicionado sobre o Entry, nao um texto colocado na variavel:
+        assim o valor lido nunca pode ser o exemplo por acidente.
+        """
+        rotulo = tk.Label(entry, text=texto, fg="#9a9a9a", anchor="w",
+                          bg=entry.cget("background"))
+        rotulo.bind("<Button-1>", lambda _e: entry.focus_set())
+
+        def atualizar(*_):
+            if var.get():
+                rotulo.place_forget()
+            else:
+                rotulo.place(x=4, rely=0.5, anchor="w")
+
+        var.trace_add("write", atualizar)
+        entry.bind("<FocusIn>", lambda _e: rotulo.place_forget())
+        entry.bind("<FocusOut>", lambda _e: atualizar())
+        atualizar()
+
     abas = ttk.Notebook(root)
     abas.pack(fill="both", expand=True, padx=8, pady=(8, 0))
     aba_git = tk.Frame(abas)
@@ -380,7 +401,9 @@ def main():
 
     tk.Label(topo, text="Repositorio").grid(row=0, column=0, sticky="w", pady=2)
     repo_var = tk.StringVar(value=state.get("repo", ""))
-    tk.Entry(topo, textvariable=repo_var).grid(row=0, column=1, columnspan=3, sticky="ew", pady=2)
+    campo_repo = tk.Entry(topo, textvariable=repo_var)
+    campo_repo.grid(row=0, column=1, columnspan=3, sticky="ew", pady=2)
+    dica(campo_repo, repo_var, "C:/repos/meu-projeto")
 
     def browse():
         caminho = filedialog.askdirectory(initialdir=repo_var.get() or os.path.expanduser("~"))
@@ -391,7 +414,9 @@ def main():
 
     tk.Label(topo, text="Branch de producao").grid(row=1, column=0, sticky="w", pady=2)
     prod_var = tk.StringVar(value=state.get("producao", ""))
-    tk.Entry(topo, textvariable=prod_var, width=18).grid(row=1, column=1, sticky="w", pady=2)
+    campo_prod = tk.Entry(topo, textvariable=prod_var, width=18)
+    campo_prod.grid(row=1, column=1, sticky="w", pady=2)
+    dica(campo_prod, prod_var, "release-2601")
 
     tk.Label(topo, text="Branch principal").grid(row=1, column=2, sticky="e", padx=(12, 6))
     main_var = tk.StringVar(value=state.get("principal", "master"))
@@ -710,22 +735,44 @@ def main():
 
     tk.Label(topo_c, text="Repositorios").grid(row=0, column=0, sticky="w", pady=2)
     repos_var = tk.StringVar(value=state.get("repos", ""))
-    tk.Entry(topo_c, textvariable=repos_var).grid(row=0, column=1, columnspan=3, sticky="ew", pady=2)
+    campo_repos = tk.Entry(topo_c, textvariable=repos_var)
+    campo_repos.grid(row=0, column=1, columnspan=3, sticky="ew", pady=2)
+    dica(campo_repos, repos_var, "minha-org/um-repo, minha-org/outro-repo")
     tk.Label(topo_c, text="org/repo, separados por virgula", fg="#666").grid(
         row=0, column=4, sticky="w", padx=(6, 0))
 
     tk.Label(topo_c, text="OpenProject").grid(row=1, column=0, sticky="w", pady=2)
     op_url_var = tk.StringVar(value=state.get("op_url", ""))
-    tk.Entry(topo_c, textvariable=op_url_var).grid(row=1, column=1, sticky="ew", pady=2)
+    campo_url = tk.Entry(topo_c, textvariable=op_url_var)
+    campo_url.grid(row=1, column=1, sticky="ew", pady=2)
+    dica(campo_url, op_url_var, "https://openproject.suaempresa.com.br")
     tk.Label(topo_c, text="Query").grid(row=1, column=2, sticky="e", padx=(12, 6))
     query_var = tk.StringVar(value=state.get("query", ""))
-    tk.Entry(topo_c, textvariable=query_var, width=10).grid(row=1, column=3, sticky="w")
+    campo_query = tk.Entry(topo_c, textvariable=query_var, width=10)
+    campo_query.grid(row=1, column=3, sticky="w")
+    dica(campo_query, query_var, "1234")
 
     tk.Label(topo_c, text="Token da API").grid(row=2, column=0, sticky="w", pady=2)
     token_var = tk.StringVar(value=desproteger(state.get("token_cifrado", "")))
-    tk.Entry(topo_c, textvariable=token_var, show="*").grid(row=2, column=1, sticky="ew", pady=2)
-    tk.Label(topo_c, text="cifrado nesta maquina (DPAPI); opcional", fg="#666").grid(
-        row=2, column=2, columnspan=3, sticky="w", padx=(12, 0))
+    campo_token = tk.Entry(topo_c, textvariable=token_var, show="")
+    campo_token.grid(row=2, column=1, sticky="ew", pady=2)
+    dica(campo_token, token_var, "cole aqui o token de API")
+
+    def esconder_token(*_):
+        campo_token.config(show="*" if token_var.get() else "")
+
+    token_var.trace_add("write", esconder_token)
+    esconder_token()
+
+    def abrir_pagina_token():
+        url = op_url_var.get().strip().rstrip("/")
+        if not url:
+            status.config(text="Preencha a URL do OpenProject primeiro.", fg="#c00")
+            return
+        webbrowser.open(url + "/my/access_token", new=2)
+
+    tk.Button(topo_c, text="Onde pegar o token", command=abrir_pagina_token).grid(
+        row=2, column=2, columnspan=2, sticky="w", padx=(12, 0))
 
     tk.Label(topo_c, text="Autor").grid(row=3, column=0, sticky="w", pady=2)
     autor_c_var = tk.StringVar(value=state.get("autor_ciclo", "") or TODOS)
@@ -735,6 +782,10 @@ def main():
     tk.Label(topo_c, text="Parado apos").grid(row=3, column=2, sticky="e", padx=(12, 6))
     dias_parado_var = tk.StringVar(value=str(state.get("dias_parado", "7")))
     tk.Entry(topo_c, textvariable=dias_parado_var, width=5).grid(row=3, column=3, sticky="w")
+    tk.Label(topo_c, fg="#666", justify="left", text=(
+        "O token e guardado cifrado nesta maquina (DPAPI) e volta preenchido na proxima vez. "
+        "Nunca use a sua senha: gere um token em Minha conta -> Tokens de acesso."
+    )).grid(row=4, column=0, columnspan=5, sticky="w", pady=(6, 0))
 
     btns_c = tk.Frame(aba_ciclo, padx=10)
     btns_c.pack(fill="x")
@@ -952,6 +1003,15 @@ def main():
     log("Aba 'Backport (git)': compara a principal com a producao e lista o que falta portar.")
     log("Aba 'Ciclo': cruza os PRs ABERTOS do GitHub com as tarefas do OpenProject.")
     log("Selecione uma linha para ver o detalhe da situacao na barra de status.")
+    def ao_fechar():
+        # guarda o que esta na tela (inclusive o token) mesmo sem clicar em nada
+        try:
+            salvar()
+        except Exception:
+            pass
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", ao_fechar)
     pump()
     root.mainloop()
 

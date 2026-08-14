@@ -155,6 +155,10 @@ botões que listam os valores encontrados na sua própria base — nada de proce
 nenhuma vem embutido no código. A comparação de branch ignora maiúsculas, porque a API do
 GitHub costuma devolver o nome da branch em minúsculas onde o git local mostra em maiúsculas.
 
+O botão **Onde pegar o token** abre a página de tokens da sua própria instância
+(`/my/access_token`) no navegador — preencha a URL antes de clicar. Você cola o token **uma
+vez**: ele volta preenchido nas próximas aberturas, e é gravado também ao fechar a janela.
+
 O token do OpenProject (gerado em *Minha conta → Tokens de acesso*; **nunca** a sua senha) fica
 em `%APPDATA%\cherrypick-tool\backport.json`, que está fora da pasta do repositório — não há
 como subir por engano — e é cifrado com a **DPAPI do Windows**, amarrada à sua conta: copiar o
