@@ -1,0 +1,4 @@
+# dist/ NAO entra aqui: os exes sao versionados para download direto pelo README.
+build/
+__pycache__/
+*.pyc
