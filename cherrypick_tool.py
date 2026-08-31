@@ -2,12 +2,12 @@
 
 Fluxo:
     fetch origin -> cria <branch final> a partir de origin/<branch base>
-    -> cherry-pick dos commits informados -> mostra resumo -> push sob confirmacao
-    -> abre no navegador a pagina de criacao do PR contra a branch base.
+    -> cherry-pick dos commits informados -> mostra resumo -> push sob confirmação
+    -> abre no navegador a página de criação do PR contra a branch base.
 
-Nunca resolve conflito sozinho, nunca faz --continue as cegas e nunca empurra
-sem clique explicito no botao Push. Abrir o PR e so a pagina de criacao: o PR
-so nasce quando voce confirmar no navegador.
+Nunca resolve conflito sozinho, nunca faz --continue às cegas e nunca empurra
+sem clique explícito no botão Push. Abrir o PR é só a página de criação: o PR
+só nasce quando você confirmar no navegador.
 """
 
 import json
@@ -27,13 +27,13 @@ STATE_FILE = os.path.join(STATE_DIR, "last.json")
 
 
 class StepError(Exception):
-    """Erro de validacao/execucao que deve parar o fluxo com mensagem propria."""
+    """Erro de validação/execução que deve parar o fluxo com mensagem própria."""
 
 
 # ---------------------------------------------------------------- git helpers
 
 def run_git(repo, args, log, quiet=False):
-    """Executa git no repo e devolve (returncode, saida combinada)."""
+    """Executa git no repo e devolve (returncode, saída combinada)."""
     if not quiet:
         log("> git " + " ".join(args))
     proc = subprocess.run(
@@ -61,7 +61,7 @@ def strip_origin(base):
 
 
 def web_url_from_remote(url):
-    """Converte a url do remote em url web (https). Devolve '' se nao reconhecer."""
+    """Converte a url do remote em url web (https). Devolve '' se não reconhecer."""
     url = (url or "").strip()
     m = re.match(r"^[\w.+-]+@([^:/]+):(.+)$", url)          # git@github.com:Org/repo.git
     if not m:
@@ -82,7 +82,7 @@ def remote_web_url(repo):
 
 
 def pr_compare_url(web, base, final):
-    """Pagina de criacao de PR de <final> para <base> (GitHub)."""
+    """Página de criação de PR de <final> para <base> (GitHub)."""
     return "%s/compare/%s...%s?expand=1" % (
         web,
         quote(strip_origin(base), safe="/"),
@@ -90,25 +90,25 @@ def pr_compare_url(web, base, final):
     )
 
 
-# ---------------------------------------------------------------- validacoes
+# ---------------------------------------------------------------- validações
 
 def parse_commits(text):
-    """Aceita commits separados por linha, espaco, virgula ou ponto-e-virgula."""
+    """Aceita commits separados por linha, espaço, virgula ou ponto-e-virgula."""
     raw = text.replace(",", " ").replace(";", " ").split()
     return [c.strip() for c in raw if c.strip()]
 
 
 def ensure_repo(repo, log):
     if not repo:
-        raise StepError("Informe o caminho do repositorio.")
+        raise StepError("Informe o caminho do repositório.")
     if not os.path.isdir(repo):
-        raise StepError("Caminho nao existe: %s" % repo)
+        raise StepError("Caminho não existe: %s" % repo)
     ok, out = git_ok(repo, ["rev-parse", "--is-inside-work-tree"])
     if not ok or out.strip() != "true":
-        raise StepError("Nao e um repositorio git: %s" % repo)
+        raise StepError("Não é um repositório git: %s" % repo)
     ok, top = git_ok(repo, ["rev-parse", "--show-toplevel"])
     if ok and top:
-        log("Repositorio: %s" % top)
+        log("Repositório: %s" % top)
     ok, branch = git_ok(repo, ["rev-parse", "--abbrev-ref", "HEAD"])
     if ok and branch:
         log("Branch atual: %s" % branch)
@@ -118,23 +118,23 @@ def ensure_repo(repo, log):
 def ensure_no_operation_in_progress(repo):
     if git_ok(repo, ["rev-parse", "-q", "--verify", "CHERRY_PICK_HEAD"])[0]:
         raise StepError(
-            "Existe um cherry-pick em andamento neste repositorio. "
-            "Finalize com 'git cherry-pick --continue' ou desfaca com '--abort' antes de comecar."
+            "Existe um cherry-pick em andamento neste repositório. "
+            "Finalize com 'git cherry-pick --continue' ou desfaça com '--abort' antes de começar."
         )
     if git_ok(repo, ["rev-parse", "-q", "--verify", "MERGE_HEAD"])[0]:
-        raise StepError("Existe um merge em andamento neste repositorio. Finalize antes de comecar.")
+        raise StepError("Existe um merge em andamento neste repositório. Finalize antes de começar.")
 
 
 def ensure_clean(repo, log):
     ok, out = git_ok(repo, ["status", "--porcelain"])
     if not ok:
-        raise StepError("Nao foi possivel ler o status do repositorio.")
+        raise StepError("Não foi possível ler o status do repositório.")
     if out:
-        log("Alteracoes pendentes:")
+        log("Alterações pendentes:")
         for line in out.splitlines()[:20]:
             log("  " + line)
         raise StepError(
-            "Working tree sujo. Commite, guarde em stash ou descarte as alteracoes antes de continuar."
+            "Working tree sujo. Commite, guarde em stash ou descarte as alterações antes de continuar."
         )
 
 
@@ -142,18 +142,18 @@ def ensure_valid_branch_name(repo, name):
     if not name:
         raise StepError("Informe o nome da branch final.")
     if not git_ok(repo, ["check-ref-format", "--branch", name])[0]:
-        raise StepError("Nome de branch invalido: %s" % name)
+        raise StepError("Nome de branch inválido: %s" % name)
 
 
 def ensure_branch_absent(repo, final):
     if git_ok(repo, ["rev-parse", "-q", "--verify", "refs/heads/" + final])[0]:
         raise StepError(
-            "A branch '%s' ja existe localmente (pode ser sobra de worktree). "
+            "A branch '%s' já existe localmente (pode ser sobra de worktree). "
             "Apague ou use outro nome antes de continuar." % final
         )
     ok, out = git_ok(repo, ["ls-remote", "--heads", "origin", final])
     if ok and out:
-        raise StepError("A branch '%s' ja existe no origin. Use outro nome." % final)
+        raise StepError("A branch '%s' já existe no origin. Use outro nome." % final)
 
 
 def resolve_base(repo, base):
@@ -162,7 +162,7 @@ def resolve_base(repo, base):
     ref = "origin/" + base if not base.startswith("origin/") else base
     if not git_ok(repo, ["rev-parse", "-q", "--verify", ref + "^{commit}"])[0]:
         raise StepError(
-            "Base '%s' nao encontrada no origin depois do fetch. Confira o nome da branch base." % ref
+            "Base '%s' não encontrada no origin depois do fetch. Confira o nome da branch base." % ref
         )
     return ref
 
@@ -174,7 +174,7 @@ def ensure_commits_exist(repo, commits):
         ok, kind = git_ok(repo, ["cat-file", "-t", sha])
         if not ok or kind.strip() != "commit":
             raise StepError(
-                "Commit '%s' nao encontrado neste repositorio. "
+                "Commit '%s' não encontrado neste repositório. "
                 "Confira o id ou traga a branch de origem (git fetch --all)." % sha
             )
 
@@ -193,7 +193,7 @@ def prepare(repo, base, commits_text, final, log):
     log("--- fetch ---")
     code, _ = run_git(repo, ["fetch", "origin", "--prune"], log)
     if code != 0:
-        raise StepError("git fetch falhou. Veja a saida acima.")
+        raise StepError("git fetch falhou. Veja a saída acima.")
 
     base_ref = resolve_base(repo, base)
     ensure_branch_absent(repo, final)
@@ -201,10 +201,10 @@ def prepare(repo, base, commits_text, final, log):
 
     log("")
     log("--- criando branch %s a partir de %s ---" % (final, base_ref))
-    # --no-track: nao herda origin/<base> como upstream (evita push acidental na base).
+    # --no-track: não herda origin/<base> como upstream (evita push acidental na base).
     code, _ = run_git(repo, ["checkout", "--no-track", "-b", final, base_ref], log)
     if code != 0:
-        raise StepError("Nao foi possivel criar a branch. Nada foi alterado.")
+        raise StepError("Não foi possível criar a branch. Nada foi alterado.")
 
     log("")
     log("--- cherry-pick (%d commit(s)) ---" % len(commits))
@@ -220,14 +220,14 @@ def prepare(repo, base, commits_text, final, log):
                 for line in conflicts.splitlines():
                     log("  " + line)
             log("")
-            log("O cherry-pick parou. Resolva na mao no repositorio e entao:")
+            log("O cherry-pick parou. Resolva na mão no repositório e então:")
             log("  git -C %s cherry-pick --continue" % repo)
-            log("Depois volte aqui e use o botao Push (ele revalida o estado).")
-            log("Para desfazer: botao 'Abortar cherry-pick' e depois")
+            log("Depois volte aqui e use o botão Push (ele revalida o estado).")
+            log("Para desfazer: botão 'Abortar cherry-pick' e depois")
             log("  git -C %s checkout %s && git -C %s branch -D %s"
                 % (repo, original_branch or base, repo, final))
             raise StepError(
-                "Conflito no cherry-pick de %s. Nada foi enviado; resolva no repositorio." % sha
+                "Conflito no cherry-pick de %s. Nada foi enviado; resolva no repositório." % sha
             )
 
     log("")
@@ -235,8 +235,8 @@ def prepare(repo, base, commits_text, final, log):
     run_git(repo, ["log", "--oneline", "%s..HEAD" % base_ref], log)
     run_git(repo, ["diff", "--stat", "%s..HEAD" % base_ref], log)
     log("")
-    log("Cherry-pick concluido sem conflito. Nada foi enviado ainda.")
-    log("Confira o resumo e use o botao Push.")
+    log("Cherry-pick concluído sem conflito. Nada foi enviado ainda.")
+    log("Confira o resumo e use o botão Push.")
     return {"repo": repo, "final": final, "base_ref": base_ref, "commits": commits}
 
 
@@ -246,14 +246,14 @@ def push(repo, final, base, log, abrir_pr=True):
     ok, head = git_ok(repo, ["rev-parse", "--abbrev-ref", "HEAD"])
     if not ok or head.strip() != final:
         raise StepError(
-            "O repositorio nao esta na branch '%s' (esta em '%s'). Push cancelado." % (final, head.strip())
+            "O repositório não está na branch '%s' (está em '%s'). Push cancelado." % (final, head.strip())
         )
     ensure_clean(repo, log)
     log("")
     log("--- push ---")
     code, _ = run_git(repo, ["push", "-u", "origin", final], log)
     if code != 0:
-        raise StepError("git push falhou. Veja a saida acima.")
+        raise StepError("git push falhou. Veja a saída acima.")
     log("")
     log("Branch '%s' publicada no origin." % final)
 
@@ -262,29 +262,29 @@ def push(repo, final, base, log, abrir_pr=True):
         return
     web = remote_web_url(repo)
     if not web:
-        log("Nao foi possivel identificar a url web do origin. Abra o PR na mao.")
+        log("Não foi possível identificar a url web do origin. Abra o PR na mão.")
         return
     if not base:
-        log("Branch base em branco. Abra o PR na mao.")
+        log("Branch base em branco. Abra o PR na mão.")
         return
     url = pr_compare_url(web, base, final)
     log("PR (%s <- %s):" % (strip_origin(base), final))
     log("  " + url)
     try:
         webbrowser.open(url, new=2)
-        log("Pagina de criacao do PR aberta no navegador. O PR so e criado quando voce confirmar la.")
+        log("Página de criação do PR aberta no navegador. O PR só é criado quando você confirmar lá.")
     except Exception as exc:
-        log("Nao foi possivel abrir o navegador (%r). Use a url acima." % (exc,))
+        log("Não foi possível abrir o navegador (%r). Use a url acima." % (exc,))
 
 
 def abort_cherry_pick(repo, log):
     ensure_repo(repo, log)
     if not git_ok(repo, ["rev-parse", "-q", "--verify", "CHERRY_PICK_HEAD"])[0]:
-        raise StepError("Nao ha cherry-pick em andamento para abortar.")
+        raise StepError("Não há cherry-pick em andamento para abortar.")
     code, _ = run_git(repo, ["cherry-pick", "--abort"], log)
     if code != 0:
-        raise StepError("git cherry-pick --abort falhou. Veja a saida acima.")
-    log("Cherry-pick abortado. A branch criada continua existindo (apague na mao se quiser).")
+        raise StepError("git cherry-pick --abort falhou. Veja a saída acima.")
+    log("Cherry-pick abortado. A branch criada continua existindo (apague na mão se quiser).")
 
 
 # ---------------------------------------------------------------- estado
@@ -328,7 +328,7 @@ def main():
     frm.pack(fill="both", expand=True)
     frm.columnconfigure(1, weight=1)
 
-    tk.Label(frm, text="Repositorio").grid(row=0, column=0, sticky="w", pady=3)
+    tk.Label(frm, text="Repositório").grid(row=0, column=0, sticky="w", pady=3)
     repo_var = tk.StringVar(value=state.get("repo", ""))
     tk.Entry(frm, textvariable=repo_var).grid(row=0, column=1, sticky="ew", pady=3)
 
@@ -347,7 +347,7 @@ def main():
     commits_txt = tk.Text(frm, height=4, wrap="none")
     commits_txt.grid(row=2, column=1, sticky="ew", pady=3)
     commits_txt.insert("1.0", state.get("commits", ""))
-    tk.Label(frm, text="(um por linha,\nna ordem de aplicacao)", justify="left", fg="#666").grid(
+    tk.Label(frm, text="(um por linha,\nna ordem de aplicação)", justify="left", fg="#666").grid(
         row=2, column=2, sticky="nw", padx=(6, 0)
     )
 
@@ -357,7 +357,7 @@ def main():
 
     pr_var = tk.BooleanVar(value=bool(state.get("abrir_pr", True)))
     tk.Checkbutton(
-        frm, text="Abrir a pagina do PR no navegador apos o push", variable=pr_var
+        frm, text="Abrir a página do PR no navegador após o push", variable=pr_var
     ).grid(row=4, column=1, sticky="w", pady=(6, 0))
 
     btns = tk.Frame(frm)
@@ -409,7 +409,7 @@ def main():
                 log("")
                 log("ERRO: %s" % exc)
                 root.after(0, lambda: status.config(text=str(exc), fg="#c00"))
-            except Exception as exc:  # falha inesperada: mostra e nao mascara
+            except Exception as exc:  # falha inesperada: mostra e não mascara
                 prepared["ok"] = False
                 log("")
                 log("ERRO inesperado: %r" % (exc,))
@@ -452,7 +452,7 @@ def main():
                 log,
                 bool(pr_var.get()),
             ),
-            "Push concluido.",
+            "Push concluído.",
         )
 
     def do_abort():
@@ -463,7 +463,7 @@ def main():
     btn_abort.config(command=do_abort)
 
     log("Preencha os campos e clique em Preparar.")
-    log("Nada e enviado ao origin sem o botao Push.")
+    log("Nada é enviado ao origin sem o botão Push.")
     pump()
     root.mainloop()
 

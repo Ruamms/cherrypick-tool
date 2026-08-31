@@ -51,8 +51,8 @@ Compara `origin/<principal>` com `origin/<produção>` e lista o que falta porta
 
 | Campo | Exemplo | Observação |
 | ----- | ------- | ---------- |
-| Repositorio | `C:\repos\meu-projeto` | qualquer repo git com remote `origin` |
-| Branch de producao | `release-2601` | troque quando virar a versão |
+| Repositório | `C:\repos\meu-projeto` | qualquer repo git com remote `origin` |
+| Branch de produção | `release-2601` | troque quando virar a versão |
 | Branch principal | `master` | ou `main` |
 | Autor | `(todos)` | lista preenchida pela análise; escolha o seu nome para ver só o seu |
 | Dias | `180` | janela de commits da principal |
@@ -68,7 +68,7 @@ Tudo fica salvo em `%APPDATA%\cherrypick-tool\backport.json`.
 | -------- | --------- | ------------- |
 | **PENDENTE** (vermelho) | nenhum sinal de backport | é o caso que queima cliente |
 | **BRANCH CRIADA** (laranja) | a branch de backport existe no `origin`, mas nada chegou na produção | PR de backport aberto ou abandonado |
-| **PROVAVEL** (cinza) | o número da tarefa já aparece na produção, com outro assunto | típico de PR de backport intitulado com o nome da branch |
+| **PROVÁVEL** (cinza) | o número da tarefa já aparece na produção, com outro assunto | típico de PR de backport intitulado com o nome da branch |
 | *(não listado)* | já portado | patch-id equivalente (`git log --cherry-pick`) ou assunto normalizado igual |
 
 O número da tarefa é qualquer número de 5 a 7 dígitos no assunto do commit
@@ -79,7 +79,7 @@ ele não pode entrar na comparação.
 O histórico de produção é lido com janela de 3 anos, independente do campo **Dias**:
 um backport pode ter sido feito muito depois do commit original.
 
-**PROVAVEL não é prova.** Duas correções da mesma tarefa, com PRs diferentes, caem aí — e
+**PROVÁVEL não é prova.** Duas correções da mesma tarefa, com PRs diferentes, caem aí — e
 só uma pode ter ido. Confira antes de descartar.
 
 ## Coluna CONFLITO
@@ -142,9 +142,9 @@ Ela cruza duas fontes e não depende do `gh` CLI:
 | Situação | Significa | O que fazer |
 | -------- | --------- | ----------- |
 | **PODE MERGEAR** (verde) | a tarefa está num status de **concluída** e o PR continua aberto | mergear — é trabalho pronto parado |
-| **SEM PR DE PRODUCAO** (vermelho) | a produção é obrigatória para essa tarefa e não há PR aberto para essa branch | abrir o backport (a aba git faz isso) |
-| **FALTA EM OUTRA VERSAO** (vinho) | falta numa **outra** branch obrigatória — homologação, ou uma versão pedida no card | abrir o backport daquela versão |
-| **AGUARDA APROVACAO** (azul) | existe PR aberto para uma branch de versão esperando revisão há N dias | cobrar revisão |
+| **SEM PR DE PRODUÇÃO** (vermelho) | a produção é obrigatória para essa tarefa e não há PR aberto para essa branch | abrir o backport (a aba git faz isso) |
+| **FALTA EM OUTRA VERSÃO** (vinho) | falta numa **outra** branch obrigatória — homologação, ou uma versão pedida no card | abrir o backport daquela versão |
+| **AGUARDA APROVAÇÃO** (azul) | existe PR aberto para uma branch de versão esperando revisão há N dias | cobrar revisão |
 | **FALTA A BUILD (X5)** (âmbar) | tarefa concluída, sem PR aberto, e o campo de build vazio | preencher a versão no card |
 | **PARADO** (laranja) | PR aberto sem nenhuma atualização há mais dias que o limite | decidir: retomar ou fechar |
 | **OK** (cinza) | nada a fazer pelo que dá para ver dos PRs abertos | — |
@@ -169,7 +169,7 @@ colunas, a pendência, o Excel) lê dela:
 | o card tem **Confirmar entrega ao cliente?** marcado | as versões escritas em **ramos para disponibilização**, qualquer que seja o tipo |
 
 Versão que a tarefa **não** pediu não é cobrada: a coluna daquela branch mostra
-`nao solicitado` em vez de `PR nao aberto`. É o que separa "falta portar" de "nunca foi para
+`não solicitado` em vez de `PR não aberto`. É o que separa "falta portar" de "nunca foi para
 ser portado" — o caso de um card que pede só a 2602 e não a 2601.
 
 Nada aqui olha o *status* da tarefa para expandir branches: um card em "Desenvolvido" continua
@@ -197,7 +197,7 @@ conferir de olho.
 
 ### O que cada lado diz
 
-As colunas **PR PRINCIPAL**, **PR PRODUCAO** e **PR HOMOLOGACAO** não mostram só o número do
+As colunas **PR PRINCIPAL**, **PR PRODUÇÃO** e **PR HOMOLOGAÇÃO** não mostram só o número do
 PR — mostram a situação daquele lado, que é o que interessa para agir:
 
 | Texto | Significa |
@@ -205,14 +205,14 @@ PR — mostram a situação daquele lado, que é o que interessa para agir:
 | `mergeado` | a tarefa já aparece no histórico daquela branch (lido do clone local) |
 | `aprovado, falta mergear` | PR aberto e já aprovado na revisão |
 | `comentado, sem aprovar (Nd)` | alguém revisou e comentou, mas não apertou aprovar |
-| `revisao pediu ajuste` | PR aberto com pedido de mudança |
-| `aguardando aprovacao (Nd)` | PR aberto e ninguém encostou ainda |
+| `revisão pediu ajuste` | PR aberto com pedido de mudança |
+| `aguardando aprovação (Nd)` | PR aberto e ninguém encostou ainda |
 | `rascunho` | PR aberto como *draft* |
-| `PR nao aberto` | nada aberto e nada no histórico daquela branch |
+| `PR não aberto` | nada aberto e nada no histórico daquela branch |
 | `sem PR aberto` | nada aberto e **não havia clone local** para conferir o histórico |
-| `nao solicitado` | aquela branch **não é obrigatória** para essa tarefa |
+| `não solicitado` | aquela branch **não é obrigatória** para essa tarefa |
 
-Para distinguir `mergeado` de `PR nao aberto` é preciso ter o **clone local** informado no
+Para distinguir `mergeado` de `PR não aberto` é preciso ter o **clone local** informado no
 campo Repositórios — é do histórico do git que sai essa resposta, não do GitHub. Sem clone,
 os dois casos viram `sem PR aberto`, que é honesto sobre o que se sabe. É também de lá que sai
 a resposta para "o commit já está na branch?": o histórico é lido **de cada branch obrigatória**,
@@ -224,11 +224,11 @@ inclusive as que vieram do campo de ramos.
 falta — e nada mais:
 
 ```
-v2.2601: aguardando aprovacao (19d) #8030, v2.2602: PR nao aberto
+v2.2601: aguardando aprovação (19d) #8030, v2.2602: PR não aberto
 ```
 
 Uma branch sai dessa lista quando a tarefa aparece no histórico dela (`mergeado`) ou quando ela
-não é obrigatória para essa tarefa. Se sobrar só `v2.2602: PR nao aberto`, a pendência da tarefa
+não é obrigatória para essa tarefa. Se sobrar só `v2.2602: PR não aberto`, a pendência da tarefa
 é exclusivamente a 2602.
 
 > Sem clone local a ferramenta não sabe o que já foi mergeado, então **toda** branch obrigatória
@@ -239,7 +239,7 @@ não é obrigatória para essa tarefa. Se sobrar só `v2.2602: PR nao aberto`, a
 células que têm link). **BUILD (X5)** mostra o campo de build da tarefa.
 
 > Se o seu time não usa o botão *Approve* do GitHub, `aprovado, falta mergear` não vai
-> aparecer — o que você verá é `comentado, sem aprovar` contra `aguardando aprovacao`, que
+> aparecer — o que você verá é `comentado, sem aprovar` contra `aguardando aprovação`, que
 > ainda separa o PR que alguém olhou do PR em que ninguém encostou.
 
 **Escopo desta versão: só PR aberto.** O que já foi mergeado sai do radar. Por isso a pendência
@@ -252,14 +252,14 @@ Na ordem em que aparecem na tela:
 
 | Campo | O que é |
 | ----- | ------- |
-| **Repositorios** | `org/repo` separados por vírgula **ou** o caminho de um clone — nesse caso o `org/repo` é descoberto pelo remote `origin`. Vazio usa o repositório da aba git. |
+| **Repositórios** | `org/repo` separados por vírgula **ou** o caminho de um clone — nesse caso o `org/repo` é descoberto pelo remote `origin`. Vazio usa o repositório da aba git. |
 | **OpenProject** | URL da sua instância. **Opcional**: sem ela a aba roda só com o GitHub e deduz o tipo do título do PR. |
 | **Token da API** | token pessoal do OpenProject (*Minha conta → Tokens de acesso*), **nunca** a sua senha. O botão **Onde pegar o token** abre essa página. Guardado cifrado nesta máquina. |
 | **Autor** | filtra por quem abriu o PR; a lista é preenchida pela carga. `(todos)` mostra o time inteiro. |
-| **Branch de producao** | contra qual branch o PR de produção é esperado (ex.: `release-2601`). Vazio, usa a da aba git. A comparação ignora maiúsculas. |
-| **Branch de homologacao** | a próxima versão (ex.: `release-2602`). **Vazio, a ferramenta se comporta exatamente como antes**: uma branch de versão só. |
+| **Branch de produção** | contra qual branch o PR de produção é esperado (ex.: `release-2601`). Vazio, usa a da aba git. A comparação ignora maiúsculas. |
+| **Branch de homologação** | a próxima versão (ex.: `release-2602`). **Vazio, a ferramenta se comporta exatamente como antes**: uma branch de versão só. |
 | **Query salva (id)** | **opcional.** O número que aparece na URL do gerenciador como `?query_id=1234` — a visão já filtrada do seu time, para trazer também tarefas que não têm PR aberto (é o que permite pegar o caso *FALTA A BUILD*). As tarefas dos PRs são buscadas pelo número, independente dela. |
-| **Parado apos (dias)** | quantos dias sem **nenhuma** atualização no PR para ele ser marcado como PARADO. |
+| **Parado após (dias)** | quantos dias sem **nenhuma** atualização no PR para ele ser marcado como PARADO. |
 | **Conta do GitHub** | qual credencial usar (veja abaixo). |
 
 As duas branches de versão são campos — não há nome de versão escrito no código. Quando a
@@ -268,7 +268,7 @@ produção virar a 2602, você troca os dois campos e nada mais.
 ### Os botões
 
 - **Carregar** — busca os PRs abertos e as tarefas, e monta a lista. É a ação principal da aba.
-- **Tipos que exigem producao...** — marque aqui os tipos (corretiva, dívida técnica, o que for
+- **Tipos que exigem produção...** — marque aqui os tipos (corretiva, dívida técnica, o que for
   na sua casa) que precisam chegar nas branches de versão. **Sem nenhum marcado, ninguém é
   cobrado por falta de PR de produção** — o log avisa quando isso acontece.
 - **Status que liberam merge...** — status intermediários que também contam como "pronto"
@@ -287,8 +287,8 @@ consulta nenhuma, igual ao filtro de Autor:
 
 | Filtro | Para quê |
 | ------ | -------- |
-| **entrega ao cliente** | `Sim` / `Nao` / `(todos)`. `Sim` deixa na tela só as tarefas que pediram disponibilização em outras versões — a fila de backport do momento. |
-| **versao pedida (ramos)** | `(todas)` ou uma das versões encontradas na carga. Mostra só as tarefas cujo campo de ramos cita aquela versão — "o que ainda falta para a 2602?" em um clique. |
+| **entrega ao cliente** | `Sim` / `Não` / `(todos)`. `Sim` deixa na tela só as tarefas que pediram disponibilização em outras versões — a fila de backport do momento. |
+| **versão pedida (ramos)** | `(todas)` ou uma das versões encontradas na carga. Mostra só as tarefas cujo campo de ramos cita aquela versão — "o que ainda falta para a 2602?" em um clique. |
 
 A lista de versões é preenchida pelo que apareceu na sua base, não por uma lista fixa. O filtro
 de versão olha o que o **card pediu**; para saber se aquela versão já recebeu a tarefa, a
@@ -301,8 +301,8 @@ cabeçalho congelado:
 
 - **Tarefas** — exatamente as colunas da tela, na mesma ordem, respeitando os filtros e a
   ordenação ativos no momento da exportação;
-- **Pendencias por branch** — uma linha por **tarefa × branch**, com `BRANCH`,
-  `OBRIGATORIA`, `SITUACAO` e `PENDENTE` em colunas próprias.
+- **Pendências por branch** — uma linha por **tarefa × branch**, com `BRANCH`,
+  `OBRIGATÓRIA`, `SITUAÇÃO` e `PENDENTE` em colunas próprias.
 
 A segunda aba existe porque é ela que responde por filtro, e não por leitura de texto:
 `BRANCH = v2.2602` + `PENDENTE = sim` é a lista do que falta naquela versão. Uma tarefa
@@ -321,8 +321,8 @@ no seu gitconfig). Por isso o campo Repositórios importa: um caminho de pasta n
 
 O seletor **Conta do GitHub** oferece:
 
-- `(automatica pelo repositorio)` — o certo em quase todo caso: pergunta ao git usando o `org/repo`;
-- `(padrao do git)` — sem caminho, o que a máquina responder por padrão;
+- `(automática pelo repositório)` — o certo em quase todo caso: pergunta ao git usando o `org/repo`;
+- `(padrão do git)` — sem caminho, o que a máquina responder por padrão;
 - as contas encontradas no Gerenciador de Credenciais do Windows, para forçar uma delas.
 
 A conta efetivamente usada aparece em verde ao lado do seletor e no log, a cada carga.
@@ -367,7 +367,7 @@ Preencha os 4 campos e clique em **Preparar**:
 
 | Campo | Exemplo |
 | ----- | ------- |
-| Repositorio | `C:\repos\meu-projeto` |
+| Repositório | `C:\repos\meu-projeto` |
 | Branch base | `release-2601` |
 | Commits | `9f8e7d6c5b4a39281706f5e4d3c2b1a098765432` |
 | Branch final | `fb_123456_2601` |

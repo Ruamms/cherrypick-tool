@@ -1,18 +1,18 @@
-"""BackportCheck: o que esta na master e ainda nao chegou na branch de producao.
+"""BackportCheck: o que está na master e ainda não chegou na branch de produção.
 
-Compara `origin/<principal>` com `origin/<producao>` e lista o que falta portar,
-classificando cada commit em quatro situacoes:
+Compara `origin/<principal>` com `origin/<produção>` e lista o que falta portar,
+classificando cada commit em quatro situações:
 
     PENDENTE  - nenhum sinal de que foi portado
-    BRANCH    - ja existe branch de backport no origin, mas nada na producao
-                (backport publicado e PR nao mergeado)
-    PROVAVEL  - o numero da tarefa aparece em algum commit da producao, com outro
-                assunto (tipico de PR de backport intitulado com o nome da branch)
-    (portado) - patch-id equivalente ou assunto igual: nao entra na lista
+    BRANCH    - já existe branch de backport no origin, mas nada na produção
+                (backport publicado e PR não mergeado)
+    PROVÁVEL  - o número da tarefa aparece em algum commit da produção, com outro
+                assunto (típico de PR de backport intitulado com o nome da branch)
+    (portado) - patch-id equivalente ou assunto igual: não entra na lista
 
-O botao de backport reaproveita o fluxo do CherryPickPush: cria a branch a partir
-de origin/<producao>, faz cherry-pick, push e abre a pagina do PR. Em conflito ele
-para e nao empurra nada.
+O botão de backport reaproveita o fluxo do CherryPickPush: cria a branch a partir
+de origin/<produção>, faz cherry-pick, push e abre a página do PR. Em conflito ele
+para e não empurra nada.
 """
 
 import json
@@ -35,13 +35,13 @@ from cherrypick_tool import (
 
 STATE_FILE = os.path.join(STATE_DIR, "backport.json")
 
-# Janela de historico lida na producao para decidir o que ja foi portado.
+# Janela de histórico lida na produção para decidir o que já foi portado.
 # Independe do filtro de dias da master: um backport pode ter sido feito bem depois.
 JANELA_PRODUCAO_DIAS = 1095
 
 PENDENTE = "PENDENTE"
 BRANCH = "BRANCH CRIADA"
-PROVAVEL = "PROVAVEL"
+PROVAVEL = "PROVÁVEL"
 PORTADO = "PORTADO"
 
 ORDEM = {PENDENTE: 0, BRANCH: 1, PROVAVEL: 2}
@@ -49,14 +49,14 @@ ORDEM = {PENDENTE: 0, BRANCH: 1, PROVAVEL: 2}
 CORES = {PENDENTE: "#b00000", BRANCH: "#b06000", PROVAVEL: "#707070"}
 
 LEGENDA = (
-    (PENDENTE, "nenhum sinal de backport - e o que quebra cliente"),
-    (BRANCH, "a branch de backport existe no origin, mas nada chegou na producao (PR nao mergeado)"),
-    (PROVAVEL, "a OP ja aparece na producao com outro assunto - confira antes de descartar"),
+    (PENDENTE, "nenhum sinal de backport - é o que quebra cliente"),
+    (BRANCH, "a branch de backport existe no origin, mas nada chegou na produção (PR não mergeado)"),
+    (PROVAVEL, "a OP já aparece na produção com outro assunto - confira antes de descartar"),
 )
 
 RODAPE_LEGENDA = (
-    "Ja portado (patch-id equivalente ou assunto igual) nao entra na lista.  |  "
-    "Coluna CONFLITO: simulacao do cherry-pick sobre a producao, sem alterar nada no seu repo."
+    "Já portado (patch-id equivalente ou assunto igual) não entra na lista.  |  "
+    "Coluna CONFLITO: simulação do cherry-pick sobre a produção, sem alterar nada no seu repo."
 )
 
 TODOS = "(todos)"
@@ -69,10 +69,10 @@ CONFLITO = "conflito"
 SEM_INFO = "?"
 
 
-# ---------------------------------------------------------------- normalizacao
+# ---------------------------------------------------------------- normalização
 
 def norm_assunto(texto):
-    """Assunto comparavel: sem (#1234), sem acento, so alfanumerico."""
+    """Assunto comparável: sem (#1234), sem acento, só alfanumérico."""
     texto = re.sub(r"\(#\d+\)", " ", texto)
     texto = unicodedata.normalize("NFKD", texto)
     texto = "".join(c for c in texto if not unicodedata.combining(c)).lower()
@@ -80,7 +80,7 @@ def norm_assunto(texto):
 
 
 def ops_do_assunto(texto):
-    """Numeros de OP do assunto. Tira antes o (#1234) do PR para nao confundir."""
+    """Números de OP do assunto. Tira antes o (#1234) do PR para não confundir."""
     return set(re.findall(r"\b\d{5,7}\b", re.sub(r"\(#\d+\)", " ", texto)))
 
 
@@ -90,7 +90,7 @@ def pr_do_assunto(texto):
 
 
 def sufixo_producao(producao):
-    """release-2601 -> 2601 ; v2.2701 -> 2701 ; fallback: nome sem pontuacao."""
+    """release-2601 -> 2601 ; v2.2701 -> 2701 ; fallback: nome sem pontuação."""
     nome = strip_origin(producao)
     numeros = re.findall(r"\d+", nome)
     return numeros[-1] if numeros else re.sub(r"[^A-Za-z0-9]+", "", nome)
@@ -100,19 +100,19 @@ def nome_branch_padrao(op, sha, sufixo):
     return "fb_%s_%s" % (op or sha[:7], sufixo)
 
 
-# ---------------------------------------------------------------- analise
+# ---------------------------------------------------------------- análise
 
 def _ref_valida(repo, ref):
     return git_ok(repo, ["rev-parse", "-q", "--verify", ref + "^{commit}"])[0]
 
 
 def indice_producao(repo, ref_prod):
-    """Assuntos normalizados e numeros de tarefa ja presentes na producao."""
+    """Assuntos normalizados e números de tarefa já presentes na produção."""
     ok, saida = git_ok(repo, [
         "log", "--format=%s", ref_prod, "--since=%d days ago" % JANELA_PRODUCAO_DIAS,
     ])
     if not ok:
-        raise StepError("Nao foi possivel ler o historico de %s." % ref_prod)
+        raise StepError("Não foi possível ler o histórico de %s." % ref_prod)
     assuntos, ops = set(), {}
     for linha in saida.splitlines():
         chave = norm_assunto(linha)
@@ -136,21 +136,21 @@ def branches_do_origin(repo):
 
 
 def classificar(assunto, assuntos_prod, ops_prod, branches_remotas, sufixo):
-    """Situacao de um commit da principal em relacao a producao."""
+    """Situação de um commit da principal em relação à produção."""
     if norm_assunto(assunto) in assuntos_prod:
-        return PORTADO, "assunto identico ja esta na producao"
+        return PORTADO, "assunto idêntico já está na produção"
     ops = ops_do_assunto(assunto)
     comuns = sorted(ops & set(ops_prod))
     if comuns:
-        return PROVAVEL, "tarefa %s ja aparece na producao: %s" % (comuns[0], ops_prod[comuns[0]])
+        return PROVAVEL, "tarefa %s já aparece na produção: %s" % (comuns[0], ops_prod[comuns[0]])
     achadas = [b for b in branches_remotas if sufixo in b and any(op in b for op in ops)]
     if achadas:
-        return BRANCH, "branch no origin sem merge na producao: %s" % ", ".join(achadas[:3])
+        return BRANCH, "branch no origin sem merge na produção: %s" % ", ".join(achadas[:3])
     return PENDENTE, ""
 
 
 def commit_do_pr(repo, ref_main, numero):
-    """Acha na principal o commit do squash merge do PR <numero>. ('', '') se nao houver."""
+    """Acha na principal o commit do squash merge do PR <número>. ('', '') se não houver."""
     ok, saida = git_ok(repo, [
         "log", ref_main, "--fixed-strings", "--grep=(#%s)" % numero,
         "--format=%H%x1f%s%x1f%ad", "--date=short", "-2",
@@ -167,8 +167,8 @@ def commit_do_pr(repo, ref_main, numero):
 def resolver_repos(texto, repo_local, log):
     """Aceita 'org/repo' ou o caminho de um clone; devolve (lista, {repo: caminho}).
 
-    Caminho de pasta e resolvido pelo remote origin daquele clone - foi o engano
-    mais facil de cometer, e e tambem o que faz o git escolher a conta certa.
+    Caminho de pasta é resolvido pelo remote origin daquele clone - foi o engano
+    mais fácil de cometer, e é também o que faz o git escolher a conta certa.
     """
     from github_prs import repo_do_remote
 
@@ -181,62 +181,62 @@ def resolver_repos(texto, repo_local, log):
             ok, url = git_ok(item, ["remote", "get-url", "origin"])
             nome = repo_do_remote(url) if ok else ""
             if not nome:
-                raise StepError("Nao consegui descobrir o org/repo do clone em %s." % item)
+                raise StepError("Não consegui descobrir o org/repo do clone em %s." % item)
             log("  %s -> %s" % (item, nome))
         elif "/" in item and ":" not in item and "\\" not in item:
             nome = item.strip("/")
         else:
             raise StepError(
-                "'%s' nao e 'org/repo' nem uma pasta de clone existente." % item)
+                "'%s' não é 'org/repo' nem uma pasta de clone existente." % item)
         if nome not in resolvidos:
             resolvidos.append(nome)
             if os.path.isdir(item):
                 locais[nome] = item
     if not resolvidos:
-        raise StepError("Informe ao menos um repositorio (org/repo ou a pasta de um clone).")
+        raise StepError("Informe ao menos um repositório (org/repo ou a pasta de um clone).")
     return resolvidos, locais
 
 
 def analisar(repo, producao, principal, dias, log):
     """Devolve (linhas, portados_por_autor, autores).
 
-    Nao filtra por autor: quem filtra e a tela, para trocar de autor sem
+    Não filtra por autor: quem filtra é a tela, para trocar de autor sem
     reprocessar o git. Levanta StepError em erro de uso.
     """
     ensure_repo(repo, log)
     if not producao:
-        raise StepError("Informe a branch de producao.")
+        raise StepError("Informe a branch de produção.")
     if not principal:
         raise StepError("Informe a branch principal.")
 
     log("")
     log("--- fetch ---")
     if run_git(repo, ["fetch", "origin", "--prune"], log)[0] != 0:
-        raise StepError("git fetch falhou. Veja a saida acima.")
+        raise StepError("git fetch falhou. Veja a saída acima.")
 
     ref_prod = "origin/" + strip_origin(producao)
     ref_main = "origin/" + strip_origin(principal)
     for ref in (ref_prod, ref_main):
         if not _ref_valida(repo, ref):
-            raise StepError("Branch '%s' nao encontrada no origin depois do fetch." % ref)
+            raise StepError("Branch '%s' não encontrada no origin depois do fetch." % ref)
 
     sufixo = sufixo_producao(producao)
     log("")
-    log("--- lendo %s (ultimos %d dias) ---" % (ref_prod, JANELA_PRODUCAO_DIAS))
+    log("--- lendo %s (últimos %d dias) ---" % (ref_prod, JANELA_PRODUCAO_DIAS))
     assuntos_prod = set()
     ops_prod = {}
     ok, saida = git_ok(repo, [
         "log", "--format=%s", ref_prod, "--since=%d days ago" % JANELA_PRODUCAO_DIAS,
     ])
     if not ok:
-        raise StepError("Nao foi possivel ler o historico de %s." % ref_prod)
+        raise StepError("Não foi possível ler o histórico de %s." % ref_prod)
     for linha in saida.splitlines():
         chave = norm_assunto(linha)
         if chave:
             assuntos_prod.add(chave)
         for op in ops_do_assunto(linha):
             ops_prod.setdefault(op, linha.strip())
-    log("%d commits lidos na producao." % len(saida.splitlines()))
+    log("%d commits lidos na produção." % len(saida.splitlines()))
 
     log("")
     log("--- branches de backport no origin ---")
@@ -250,9 +250,9 @@ def analisar(repo, producao, principal, dias, log):
     log("%d branches remotas." % len(branches_remotas))
 
     log("")
-    log("--- comparando %s com %s (ultimos %s dias) ---" % (ref_main, ref_prod, dias))
-    # --cherry-pick --right-only: so o que existe na master e nao tem equivalente
-    # (mesmo patch-id) na producao. Pega o cherry-pick limpo; o que veio com
+    log("--- comparando %s com %s (últimos %s dias) ---" % (ref_main, ref_prod, dias))
+    # --cherry-pick --right-only: só o que existe na master e não tem equivalente
+    # (mesmo patch-id) na produção. Pega o cherry-pick limpo; o que veio com
     # conflito resolvido diferente sobra e cai nas regras de assunto/OP abaixo.
     ok, saida = git_ok(repo, [
         "log", "--no-merges", "--cherry-pick", "--right-only",
@@ -261,7 +261,7 @@ def analisar(repo, producao, principal, dias, log):
         "%s...%s" % (ref_prod, ref_main),
     ])
     if not ok:
-        raise StepError("Nao foi possivel comparar as branches. Confira os nomes.")
+        raise StepError("Não foi possível comparar as branches. Confira os nomes.")
 
     linhas = []
     portados = {}
@@ -279,7 +279,7 @@ def analisar(repo, producao, principal, dias, log):
         comuns = sorted(ops & set(ops_prod))
         if comuns:
             status = PROVAVEL
-            detalhe = "OP %s ja aparece na producao: %s" % (comuns[0], ops_prod[comuns[0]])
+            detalhe = "OP %s já aparece na produção: %s" % (comuns[0], ops_prod[comuns[0]])
         else:
             achadas = [
                 b for b in branches_remotas
@@ -287,7 +287,7 @@ def analisar(repo, producao, principal, dias, log):
             ]
             if achadas:
                 status = BRANCH
-                detalhe = "branch no origin sem merge na producao: %s" % ", ".join(achadas[:3])
+                detalhe = "branch no origin sem merge na produção: %s" % ", ".join(achadas[:3])
             else:
                 status = PENDENTE
                 detalhe = ""
@@ -318,16 +318,16 @@ def _inverso(data):
 # ---------------------------------------------------------------- conflito
 
 def checar_conflito(repo, producao, sha):
-    """Simula o cherry-pick de <sha> sobre a producao SEM tocar no working tree.
+    """Simula o cherry-pick de <sha> sobre a produção SEM tocar no working tree.
 
-    `git merge-tree` faz o merge de 3 vias so em memoria: base = <sha>^,
-    lados = ponta da producao e <sha>. Sai 0 limpo, 1 com conflito.
+    `git merge-tree` faz o merge de 3 vias só em memória: base = <sha>^,
+    lados = ponta da produção e <sha>. Sai 0 limpo, 1 com conflito.
     Devolve (estado, arquivos_em_conflito).
     """
     if not git_ok(repo, ["rev-parse", "-q", "--verify", sha + "^{commit}"])[0]:
         return SEM_INFO, []
     if not git_ok(repo, ["rev-parse", "-q", "--verify", sha + "^^{commit}"])[0]:
-        return SEM_INFO, []  # commit raiz: nao ha base para o merge de 3 vias
+        return SEM_INFO, []  # commit raiz: não há base para o merge de 3 vias
     ref = "origin/" + strip_origin(producao)
     codigo, saida = run_git(repo, [
         "merge-tree", "--write-tree", "--name-only", "--merge-base", sha + "^", ref, sha,
@@ -336,7 +336,7 @@ def checar_conflito(repo, producao, sha):
         return LIMPO, []
     if codigo != 1:
         return SEM_INFO, []
-    # linha 1 = oid da arvore; depois, os arquivos ate a primeira linha em branco
+    # linha 1 = oid da árvore; depois, os arquivos até a primeira linha em branco
     arquivos = []
     for linha in saida.splitlines()[1:]:
         if not linha.strip():
@@ -388,15 +388,15 @@ def main():
     from cherrypick_tool import pr_compare_url, remote_web_url
 
     root = tk.Tk()
-    root.title("BackportCheck - o que falta na producao")
+    root.title("BackportCheck - o que falta na produção")
     root.geometry("1300x960")
     root.minsize(1000, 760)
 
     state = load_state()
     log_queue = queue.Queue()
-    dados = []                                   # linhas visiveis, na ordem da grade
-    cache = {"linhas": [], "portados": {}}       # resultado completo da ultima analise
-    checagem = {"gen": 0}                        # geracao da checagem de conflito em curso
+    dados = []                                   # linhas visíveis, na ordem da grade
+    cache = {"linhas": [], "portados": {}}       # resultado completo da última análise
+    checagem = {"gen": 0}                        # geração da checagem de conflito em curso
 
     def log(msg=""):
         log_queue.put(msg)
@@ -404,7 +404,7 @@ def main():
     def dica(entry, var, texto):
         """Exemplo em cinza dentro do campo vazio.
 
-        E um rotulo posicionado sobre o Entry, nao um texto colocado na variavel:
+        É um rótulo posicionado sobre o Entry, não um texto colocado na variável:
         assim o valor lido nunca pode ser o exemplo por acidente.
         """
         rotulo = tk.Label(entry, text=texto, fg="#9a9a9a", anchor="w",
@@ -430,7 +430,7 @@ def main():
     abas.add(aba_ciclo, text="  Ciclo (PRs abertos)  ")
 
     def ligar_ordenacao(grid, colunas, titulos, ordem, chaves, redesenhar):
-        """Clique no cabecalho ordena; clique de novo inverte."""
+        """Clique no cabeçalho ordena; clique de novo inverte."""
         def clicar(coluna):
             if coluna not in chaves:
                 return
@@ -457,7 +457,7 @@ def main():
     topo.pack(fill="x")
     topo.columnconfigure(1, weight=1)
 
-    tk.Label(topo, text="Repositorio").grid(row=0, column=0, sticky="w", pady=2)
+    tk.Label(topo, text="Repositório").grid(row=0, column=0, sticky="w", pady=2)
     repo_var = tk.StringVar(value=state.get("repo", ""))
     campo_repo = tk.Entry(topo, textvariable=repo_var)
     campo_repo.grid(row=0, column=1, columnspan=3, sticky="ew", pady=2)
@@ -470,7 +470,7 @@ def main():
 
     tk.Button(topo, text="...", width=3, command=browse).grid(row=0, column=4, padx=(6, 0))
 
-    tk.Label(topo, text="Branch de producao").grid(row=1, column=0, sticky="w", pady=2)
+    tk.Label(topo, text="Branch de produção").grid(row=1, column=0, sticky="w", pady=2)
     prod_var = tk.StringVar(value=state.get("producao", ""))
     campo_prod = tk.Entry(topo, textvariable=prod_var, width=18)
     campo_prod.grid(row=1, column=1, sticky="w", pady=2)
@@ -485,7 +485,7 @@ def main():
     autor_combo = ttk.Combobox(topo, textvariable=autor_var, width=26, state="readonly")
     autor_combo["values"] = [TODOS] + ([state["autor"]] if state.get("autor") else [])
     autor_combo.grid(row=2, column=1, sticky="w", pady=2)
-    tk.Label(topo, text="(preenchido pela analise)", fg="#666").grid(
+    tk.Label(topo, text="(preenchido pela análise)", fg="#666").grid(
         row=2, column=2, sticky="e", padx=(12, 6)
     )
 
@@ -503,7 +503,7 @@ def main():
     btn_pr.pack(side="left")
     tk.Label(
         btns,
-        text="(selecione varias linhas para levar tudo na mesma branch)",
+        text="(selecione várias linhas para levar tudo na mesma branch)",
         fg="#666",
     ).pack(side="left", padx=10)
 
@@ -658,7 +658,7 @@ def main():
         contagem = {}
         for linha in linhas:
             contagem[linha["status"]] = contagem.get(linha["status"], 0) + 1
-        resumo = "%d pendente(s), %d com branch criada, %d provavel(is); %d ja portado(s) fora da lista." % (
+        resumo = "%d pendente(s), %d com branch criada, %d provável(is); %d já portado(s) fora da lista." % (
             contagem.get(PENDENTE, 0), contagem.get(BRANCH, 0),
             contagem.get(PROVAVEL, 0), portados,
         )
@@ -669,7 +669,7 @@ def main():
     ligar_ordenacao(grid, colunas, {}, ordem_git, CHAVES_GIT, lambda: render())
 
     def checar_conflitos():
-        """Preenche a coluna conflito em segundo plano, sem travar os botoes."""
+        """Preenche a coluna conflito em segundo plano, sem travar os botões."""
         checagem["gen"] += 1
         geracao = checagem["gen"]
         repo = repo_var.get().strip()
@@ -690,7 +690,7 @@ def main():
                 estado, arquivos = checar_conflito(repo, producao, linha["sha"])
                 linha["conflito"], linha["arquivos"] = estado, arquivos
                 root.after(0, atualizar, indice, linha)
-            root.after(0, lambda: log("Checagem de conflito concluida (%d commits)." % len(alvos)))
+            root.after(0, lambda: log("Checagem de conflito concluída (%d commits)." % len(alvos)))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -722,7 +722,7 @@ def main():
         principal = main_var.get().strip()
         dias = (dias_var.get().strip() or "180")
         if not dias.isdigit():
-            status.config(text="Dias deve ser um numero.", fg="#c00")
+            status.config(text="Dias deve ser um número.", fg="#c00")
             return
         salvar()
 
@@ -730,7 +730,7 @@ def main():
             (resultado["linhas"], resultado["portados"],
              resultado["autores"]) = analisar(repo, producao, principal, dias, log)
 
-        in_thread(work, "Analise concluida.", depois=concluir_analise)
+        in_thread(work, "Análise concluída.", depois=concluir_analise)
 
     def do_backport():
         marcadas = selecionadas()
@@ -738,7 +738,7 @@ def main():
             return
         repo = repo_var.get().strip()
         producao = prod_var.get().strip()
-        # ordem cronologica de aplicacao
+        # ordem cronológica de aplicação
         marcadas.sort(key=lambda x: x["data"])
         sufixo = sufixo_producao(producao)
         op = next((m["op"] for m in marcadas if m["op"]), "")
@@ -760,9 +760,9 @@ def main():
         conflitados = ["  %s conflita em: %s" % (m["sha"][:9], ", ".join(m["arquivos"][:4]))
                        for m in marcadas if m["conflito"] == CONFLITO]
         if (avisos or conflitados) and not messagebox.askokcancel(
-            "Atencao",
+            "Atenção",
             "%s%sContinuar mesmo assim?" % (
-                ("Sinal de que talvez ja tenham sido portados:\n%s\n\n" % "\n".join(avisos)) if avisos else "",
+                ("Sinal de que talvez já tenham sido portados:\n%s\n\n" % "\n".join(avisos)) if avisos else "",
                 ("O cherry-pick vai parar em conflito:\n%s\n\n" % "\n".join(conflitados)) if conflitados else "",
             ),
             parent=root,
@@ -773,7 +773,7 @@ def main():
         log("=== backport para %s ===" % final)
         in_thread(
             lambda: backportar(repo, producao, [m["sha"] for m in marcadas], final, log),
-            "Backport publicado. Confira a pagina do PR no navegador.",
+            "Backport publicado. Confira a página do PR no navegador.",
             depois=do_analisar,
         )
 
@@ -783,7 +783,7 @@ def main():
             return
         web = remote_web_url(repo_var.get().strip())
         if not web:
-            status.config(text="Nao foi possivel identificar a url do origin.", fg="#c00")
+            status.config(text="Não foi possível identificar a url do origin.", fg="#c00")
             return
         for m in marcadas[:5]:
             url = "%s/pull/%s" % (web, m["pr"]) if m["pr"] else "%s/commit/%s" % (web, m["sha"])
@@ -815,7 +815,7 @@ def main():
     topo_c.pack(fill="x")
     topo_c.columnconfigure(1, weight=1)
 
-    tk.Label(topo_c, text="Repositorios").grid(row=0, column=0, sticky="w", pady=2)
+    tk.Label(topo_c, text="Repositórios").grid(row=0, column=0, sticky="w", pady=2)
     repos_var = tk.StringVar(value=state.get("repos", ""))
     campo_repos = tk.Entry(topo_c, textvariable=repos_var)
     campo_repos.grid(row=0, column=1, columnspan=3, sticky="ew", pady=2)
@@ -861,19 +861,19 @@ def main():
     autor_c_combo = ttk.Combobox(topo_c, textvariable=autor_c_var, width=26, state="readonly")
     autor_c_combo["values"] = [TODOS] + ([state["autor_ciclo"]] if state.get("autor_ciclo") else [])
     autor_c_combo.grid(row=3, column=1, sticky="w", pady=2)
-    tk.Label(topo_c, text="Branch de producao").grid(row=3, column=2, sticky="e", padx=(12, 6))
+    tk.Label(topo_c, text="Branch de produção").grid(row=3, column=2, sticky="e", padx=(12, 6))
     prod_c_var = tk.StringVar(value=state.get("producao_ciclo", "") or state.get("producao", ""))
     campo_prod_c = tk.Entry(topo_c, textvariable=prod_c_var, width=16)
     campo_prod_c.grid(row=3, column=3, sticky="w")
     dica(campo_prod_c, prod_c_var, "release-2601")
 
-    tk.Label(topo_c, text="Branch de homologacao").grid(row=4, column=0, sticky="w", pady=2)
+    tk.Label(topo_c, text="Branch de homologação").grid(row=4, column=0, sticky="w", pady=2)
     homo_c_var = tk.StringVar(value=state.get("homologacao", ""))
     campo_homo_c = tk.Entry(topo_c, textvariable=homo_c_var, width=26)
     campo_homo_c.grid(row=4, column=1, sticky="w", pady=2)
-    dica(campo_homo_c, homo_c_var, "release-2602 (vazio = nao usa)")
+    dica(campo_homo_c, homo_c_var, "release-2602 (vazio = não usa)")
 
-    tk.Label(topo_c, text="Parado apos (dias)").grid(row=4, column=2, sticky="e", padx=(12, 6))
+    tk.Label(topo_c, text="Parado após (dias)").grid(row=4, column=2, sticky="e", padx=(12, 6))
     dias_parado_var = tk.StringVar(value=str(state.get("dias_parado", "7")))
     tk.Entry(topo_c, textvariable=dias_parado_var, width=5).grid(row=4, column=3, sticky="w")
     tk.Label(topo_c, text="Conta do GitHub").grid(row=5, column=0, sticky="w", pady=2)
@@ -889,11 +889,11 @@ def main():
     rotulo_conta.grid(row=5, column=2, columnspan=3, sticky="w", padx=(12, 0))
 
     tk.Label(topo_c, fg="#666", justify="left", text=(
-        "Query salva: o numero que aparece na URL do OpenProject como ?query_id=1234 - e a visao "
-        "ja filtrada do seu time.   |   Parado apos: dias sem nenhuma atualizacao no PR."
+        "Query salva: o número que aparece na URL do OpenProject como ?query_id=1234 - é a visão "
+        "já filtrada do seu time.   |   Parado após: dias sem nenhuma atualização no PR."
     )).grid(row=6, column=0, columnspan=5, sticky="w", pady=(6, 0))
     tk.Label(topo_c, fg="#666", justify="left", text=(
-        "O token e guardado cifrado nesta maquina (DPAPI) e volta preenchido na proxima vez. "
+        "O token é guardado cifrado nesta máquina (DPAPI) e volta preenchido na próxima vez. "
         "Nunca use a sua senha: gere um token em Minha conta -> Tokens de acesso."
     )).grid(row=7, column=0, columnspan=5, sticky="w")
 
@@ -901,7 +901,7 @@ def main():
     btns_c.pack(fill="x")
     btn_carregar = tk.Button(btns_c, text="Carregar", width=14)
     btn_carregar.pack(side="left")
-    btn_tipos = tk.Button(btns_c, text="Tipos que exigem producao...", width=28)
+    btn_tipos = tk.Button(btns_c, text="Tipos que exigem produção...", width=28)
     btn_tipos.pack(side="left", padx=6)
     btn_status = tk.Button(btns_c, text="Status que liberam merge...", width=26)
     btn_status.pack(side="left")
@@ -910,23 +910,23 @@ def main():
     btn_excel = tk.Button(btns_c, text="Exportar Excel...", width=16, state="disabled")
     btn_excel.pack(side="left")
 
-    # filtros sobre o resultado ja carregado: trocar filtro nao refaz consulta
+    # filtros sobre o resultado já carregado: trocar filtro não refaz consulta
     filtros_c = tk.Frame(aba_ciclo, padx=10, pady=4)
     filtros_c.pack(fill="x")
     tk.Label(filtros_c, text="Filtrar:  entrega ao cliente").pack(side="left")
     entrega_var = tk.StringVar(value=state.get("entrega_filtro", TODOS))
     entrega_combo = ttk.Combobox(filtros_c, textvariable=entrega_var, width=10, state="readonly",
-                                 values=[TODOS, "Sim", "Nao"])
+                                 values=[TODOS, "Sim", "Não"])
     entrega_combo.pack(side="left", padx=(6, 0))
-    if entrega_var.get() not in (TODOS, "Sim", "Nao"):
+    if entrega_var.get() not in (TODOS, "Sim", "Não"):
         entrega_var.set(TODOS)
-    tk.Label(filtros_c, text="versao pedida (ramos)").pack(side="left", padx=(14, 0))
+    tk.Label(filtros_c, text="versão pedida (ramos)").pack(side="left", padx=(14, 0))
     versao_var = tk.StringVar(value=state.get("versao_filtro", TODAS))
     versao_combo = ttk.Combobox(filtros_c, textvariable=versao_var, width=12, state="readonly",
                                 values=[TODAS])
     versao_combo.pack(side="left", padx=(6, 0))
     tk.Label(filtros_c, fg="#666", text=(
-        "so tarefas que pedem aquela versao em 'ramos para disponibilizacao'"
+        "só tarefas que pedem aquela versão em 'ramos para disponibilização'"
     )).pack(side="left", padx=(10, 0))
 
     legenda_c = tk.Frame(aba_ciclo, padx=10, pady=6)
@@ -937,18 +937,18 @@ def main():
                  font=("TkDefaultFont", 9, "bold")).grid(row=i, column=1, sticky="w", padx=(8, 6))
         tk.Label(legenda_c, text="= " + texto, fg="#444").grid(row=i, column=2, sticky="w")
     tk.Label(legenda_c, fg="#0a4fb0", text=(
-        "Clique na celula de PR PRINCIPAL / PR PRODUCAO / PR HOMOLOGACAO / PR OUTRAS "
+        "Clique na célula de PR PRINCIPAL / PR PRODUÇÃO / PR HOMOLOGAÇÃO / PR OUTRAS "
         "BRANCHES para abrir o PR no navegador."
     )).grid(row=len(mod_ciclo.LEGENDA_CICLO), column=1, columnspan=2, sticky="w",
             padx=(8, 0), pady=(2, 0))
     tk.Label(legenda_c, fg="#777", text=(
-        "PENDENTE EM diz a branch e como esta cada uma. 'nao solicitado' = a tarefa nao pediu "
-        "aquela versao, entao a ausencia ali nao e pendencia."
+        "PENDENTE EM diz a branch e como está cada uma. 'não solicitado' = a tarefa não pediu "
+        "aquela versão, então a ausência ali não é pendência."
     )).grid(row=len(mod_ciclo.LEGENDA_CICLO) + 1, column=1, columnspan=2, sticky="w",
             padx=(8, 0))
     tk.Label(legenda_c, fg="#777", text=(
-        "So enxerga PR ABERTO: o que ja foi mergeado sai do radar, e por isso a pendencia diz "
-        "'sem PR aberto para producao', nao 'nao esta na producao'."
+        "Só enxerga PR ABERTO: o que já foi mergeado sai do radar, e por isso a pendência diz "
+        "'sem PR aberto para produção', não 'não está na produção'."
     )).grid(row=len(mod_ciclo.LEGENDA_CICLO) + 2, column=1, columnspan=2, sticky="w",
             padx=(8, 0))
 
@@ -957,9 +957,9 @@ def main():
     colunas_c = ("pendencia", "pendente_em", "tarefa", "tipo", "status", "entrega", "ramos",
                  "principal", "producao", "homologacao", "outros", "build", "dias", "assunto")
     larguras_c = (150, 210, 65, 95, 105, 55, 85, 165, 165, 165, 105, 105, 40, 260)
-    titulos_c = {"principal": "PR PRINCIPAL", "producao": "PR PRODUCAO",
-                 "homologacao": "PR HOMOLOGACAO", "outros": "PR OUTRAS BRANCHES",
-                 "build": "BUILD (X5)", "dias": "DIAS", "pendencia": "PENDENCIA",
+    titulos_c = {"principal": "PR PRINCIPAL", "producao": "PR PRODUÇÃO",
+                 "homologacao": "PR HOMOLOGAÇÃO", "outros": "PR OUTRAS BRANCHES",
+                 "build": "BUILD (X5)", "dias": "DIAS", "pendencia": "PENDÊNCIA",
                  "pendente_em": "PENDENTE EM", "tarefa": "TAREFA", "tipo": "TIPO",
                  "status": "STATUS", "entrega": "ENTREGA?", "ramos": "RAMOS",
                  "assunto": "ASSUNTO"}
@@ -985,13 +985,13 @@ def main():
 
     grid_c.bind("<<TreeviewSelect>>", on_select_c)
 
-    # numero da coluna -> chave de urls; calculado, para nao quebrar quando a
+    # número da coluna -> chave de urls; calculado, para não quebrar quando a
     # ordem das colunas muda
     COLUNAS_LINK = {"#%d" % (colunas_c.index(nome) + 1): nome
                     for nome in ("principal", "producao", "homologacao", "outros")}
 
     def _links_da_celula(evento):
-        """URLs do PR sob o cursor, ou [] se a celula nao for de PR."""
+        """URLs do PR sob o cursor, ou [] se a célula não for de PR."""
         if grid_c.identify_region(evento.x, evento.y) != "cell":
             return []
         lado = COLUNAS_LINK.get(grid_c.identify_column(evento.x))
@@ -1023,7 +1023,7 @@ def main():
     def _entrega(linha):
         if not linha.get("tem_entrega"):
             return "-"
-        return "sim" if linha["entrega"] else "nao"
+        return "sim" if linha["entrega"] else "não"
 
     ordem_ciclo = {"col": None, "desc": False}
     CHAVES_CICLO = {
@@ -1044,9 +1044,9 @@ def main():
     }
 
     def linhas_filtradas():
-        """Filtros de tela: autor, entrega ao cliente e versao pedida nos ramos.
+        """Filtros de tela: autor, entrega ao cliente e versão pedida nos ramos.
 
-        Todos sobre o resultado ja carregado - trocar filtro nao refaz consulta.
+        Todos sobre o resultado já carregado - trocar filtro não refaz consulta.
         """
         autor = autor_c_var.get()
         entrega = entrega_var.get()
@@ -1057,7 +1057,7 @@ def main():
                 continue
             if entrega == "Sim" and not linha["entrega"]:
                 continue
-            if entrega == "Nao" and linha["entrega"]:
+            if entrega == "Não" and linha["entrega"]:
                 continue
             if versao != TODAS and versao not in linha["versoes"]:
                 continue
@@ -1080,8 +1080,8 @@ def main():
         contagem = {}
         for l in linhas:
             contagem[l["pendencia"]] = contagem.get(l["pendencia"], 0) + 1
-        resumo = ("%d tarefa(s): %d pode(m) mergear, %d sem PR de producao, %d falta(m) em "
-                  "outra versao, %d aguardando aprovacao, %d sem build, %d parada(s)." % (
+        resumo = ("%d tarefa(s): %d pode(m) mergear, %d sem PR de produção, %d falta(m) em "
+                  "outra versão, %d aguardando aprovação, %d sem build, %d parada(s)." % (
                       len(linhas), contagem.get(mod_ciclo.MERGEAR, 0),
                       contagem.get(mod_ciclo.SEM_PROD, 0), contagem.get(mod_ciclo.SEM_VERSAO, 0),
                       contagem.get(mod_ciclo.APROVAR, 0),
@@ -1127,7 +1127,7 @@ def main():
         return [o for o, v in escolhas.items() if v.get()]
 
     def do_tipos():
-        escolha = escolher_varios("Tipos de tarefa que exigem chegar na producao:",
+        escolha = escolher_varios("Tipos de tarefa que exigem chegar na produção:",
                                   ciclo_cache["tipos"], state.get("tipos_exigem", []))
         if escolha is None:
             return
@@ -1137,12 +1137,12 @@ def main():
             do_carregar_ciclo()
 
     def do_status():
-        # os status marcados como fechados na propria instancia ja contam por si;
-        # aqui e so para incluir status intermediarios (ex.: um "teste aprovado")
+        # os status marcados como fechados na própria instância já contam por si;
+        # aqui é só para incluir status intermediários (ex.: um "teste aprovado")
         ja = state.get("status_libera") or ciclo_cache.get("fechados", [])
         escolha = escolher_varios(
             "Status que indicam tarefa pronta para mergear -- os marcados como "
-            "concluida no proprio OpenProject ja contam automaticamente:",
+            "concluída no próprio OpenProject já contam automaticamente:",
             ciclo_cache["status"], ja)
         if escolha is None:
             return
@@ -1168,19 +1168,19 @@ def main():
         log("")
         log(render_ciclo())
         if not state.get("tipos_exigem"):
-            log("Nenhum tipo marcado em 'Tipos que exigem producao...' - sem isso, nenhuma "
-                "tarefa e cobrada por falta de PR de producao.")
+            log("Nenhum tipo marcado em 'Tipos que exigem produção...' - sem isso, nenhuma "
+                "tarefa é cobrada por falta de PR de produção.")
 
     def do_carregar_ciclo():
         salvar()
         dias_p = dias_parado_var.get().strip() or "7"
         if not dias_p.isdigit():
-            status.config(text="'Parado apos' deve ser um numero.", fg="#c00")
+            status.config(text="'Parado após' deve ser um número.", fg="#c00")
             return
 
         def work():
             log("")
-            log("--- repositorios ---")
+            log("--- repositórios ---")
             repos, locais = resolver_repos(repos_var.get(), repo_var.get().strip(), log)
             log("  %s" % ", ".join(repos))
             usuario, segredo = github_prs.credencial_escolhida(
@@ -1206,12 +1206,12 @@ def main():
                 log("  conectado como %s" % cliente.eu())
                 try:
                     fechados = set(cliente.status_fechados())
-                    log("  status de concluida (isClosed): %s" % (", ".join(sorted(fechados)) or "-"))
+                    log("  status de concluída (isClosed): %s" % (", ".join(sorted(fechados)) or "-"))
                 except StepError as exc:
                     fechados = set()
-                    log("  nao consegui ler os status: %s" % exc)
-                # os numeros que interessam sao os das tarefas com PR aberto;
-                # a query salva e so um complemento opcional
+                    log("  não consegui ler os status: %s" % exc)
+                # os números que interessam são os das tarefas com PR aberto;
+                # a query salva é só um complemento opcional
                 numeros = sorted({mod_ciclo.tarefa_do_pr(p) for p in prs if mod_ciclo.tarefa_do_pr(p)})
                 wps = cliente.work_packages_por_id(numeros)
                 log("  %d tarefa(s) dos PRs abertos, %d encontrada(s)" % (len(numeros), len(wps)))
@@ -1244,18 +1244,18 @@ def main():
                          if mod_ciclo.verdadeiro(d.get("entrega"))]
                 log("  %d tarefa(s) com 'Confirmar entrega ao cliente?' marcado" % len(pedem))
                 for numero, dados in pedem[:8]:
-                    log("    %s: ramos '%s' -> versoes %s" % (
+                    log("    %s: ramos '%s' -> versões %s" % (
                         numero, dados.get("ramos") or "-",
                         ", ".join(mod_ciclo.versoes_do_texto(dados.get("ramos"))) or "nenhuma"))
                 sem_campo = [n for n, d in tarefas.items() if d.get("entrega") is None]
                 if len(sem_campo) == len(tarefas) and tarefas:
-                    log("  ATENCAO: nenhuma tarefa trouxe o campo 'Confirmar entrega ao "
+                    log("  ATENÇÃO: nenhuma tarefa trouxe o campo 'Confirmar entrega ao "
                         "cliente?'. Confira o nome do campo no OpenProject.")
             else:
-                log("OpenProject nao configurado: o tipo sai do titulo do PR.")
+                log("OpenProject não configurado: o tipo sai do título do PR.")
 
             log("")
-            log("--- revisoes dos PRs abertos ---")
+            log("--- revisões dos PRs abertos ---")
             revisoes = gh.revisoes(prs, progresso=lambda i, n: log("  %d/%d" % (i, n)))
             aprovados = sum(1 for v in revisoes.values() if v == "aprovado")
             log("  %d aprovado(s), %d com pedido de ajuste" % (
@@ -1266,8 +1266,8 @@ def main():
             nome_homo = homo_c_var.get().strip()
             modelo = mod_ciclo.modelo_de_branch(nome_prod, nome_homo)
 
-            # toda branch que alguma tarefa exige tem historico lido: sem isso
-            # nao da para dizer que o commit ja esta la
+            # toda branch que alguma tarefa exige tem histórico lido: sem isso
+            # não dá para dizer que o commit já está lá
             alvos = [n for n in (nome_main, nome_prod, nome_homo) if n]
             for dados in tarefas.values():
                 if not mod_ciclo.verdadeiro(dados.get("entrega")):
@@ -1279,18 +1279,18 @@ def main():
             log("")
             log("--- branches analisadas: %s ---" % ", ".join(alvos))
 
-            # historico local: separa "mergeado" de "PR nao aberto", por branch
+            # histórico local: separa "mergeado" de "PR não aberto", por branch
             historico = {}
             if locais:
                 log("")
-                log("--- historico local (para saber o que ja foi mergeado) ---")
+                log("--- histórico local (para saber o que já foi mergeado) ---")
                 for branch in alvos:
                     numeros = set()
                     achou = False
                     for nome_repo, caminho in locais.items():
                         ref = "origin/" + strip_origin(branch)
                         if not _ref_valida(caminho, ref):
-                            log("  %s: %s nao existe no clone" % (nome_repo, ref))
+                            log("  %s: %s não existe no clone" % (nome_repo, ref))
                             continue
                         _assuntos, ops, total = indice_producao(caminho, ref)
                         numeros |= set(ops)
@@ -1299,8 +1299,8 @@ def main():
                     historico[branch] = numeros if achou else None
             else:
                 log("")
-                log("Sem clone local informado: nao da para distinguir 'mergeado' de "
-                    "'PR nao aberto' (informe a pasta do clone no campo Repositorios).")
+                log("Sem clone local informado: não dá para distinguir 'mergeado' de "
+                    "'PR não aberto' (informe a pasta do clone no campo Repositórios).")
 
             linhas = mod_ciclo.montar(
                 prs, tarefas, nome_prod, nome_main,
@@ -1331,17 +1331,17 @@ def main():
                     webbrowser.open(pr["url"], new=2)
 
     def do_excel():
-        """Exporta o que esta na tela: uma aba igual a grade e uma por branch.
+        """Exporta o que está na tela: uma aba igual à grade e uma por branch.
 
-        A aba longa (uma linha por tarefa x branch) e a que responde 'o que falta
-        na 2602?' com um filtro do Excel, sem ler texto de celula.
+        A aba longa (uma linha por tarefa x branch) é a que responde 'o que falta
+        na 2602?' com um filtro do Excel, sem ler texto de célula.
         """
         linhas = list(ciclo_dados)
         if not linhas:
             status.config(text="Nada carregado para exportar.", fg="#c00")
             return
         caminho = filedialog.asksaveasfilename(
-            parent=root, title="Exportar analise do ciclo",
+            parent=root, title="Exportar análise do ciclo",
             defaultextension=".xlsx", filetypes=[("Planilha do Excel", "*.xlsx")],
             initialfile="ciclo-backport.xlsx")
         if not caminho:
@@ -1360,12 +1360,12 @@ def main():
         try:
             excel.escrever(caminho, [
                 ("Tarefas", cabecalho, tabela, larguras),
-                ("Pendencias por branch", list(mod_ciclo.COLUNAS_LONGO),
+                ("Pendências por branch", list(mod_ciclo.COLUNAS_LONGO),
                  mod_ciclo.linhas_por_branch(linhas),
                  [10, 14, 16, 16, 12, 30, 10, 22, 12, 12, 60]),
             ])
         except Exception as exc:
-            status.config(text="Nao consegui gravar a planilha: %r" % (exc,), fg="#c00")
+            status.config(text="Não consegui gravar a planilha: %r" % (exc,), fg="#c00")
             log("Falha ao exportar: %r" % (exc,))
             return
         status.config(text="Exportado: %s" % caminho, fg="#0a7a0a")
@@ -1380,11 +1380,11 @@ def main():
     btn_abrir_wp.config(command=do_abrir_ciclo)
     grid_c.bind("<Double-1>", lambda _e: do_abrir_ciclo())
 
-    log("Aba 'Backport (git)': compara a principal com a producao e lista o que falta portar.")
+    log("Aba 'Backport (git)': compara a principal com a produção e lista o que falta portar.")
     log("Aba 'Ciclo': cruza os PRs ABERTOS do GitHub com as tarefas do OpenProject.")
-    log("Selecione uma linha para ver o detalhe da situacao na barra de status.")
+    log("Selecione uma linha para ver o detalhe da situação na barra de status.")
     def ao_fechar():
-        # guarda o que esta na tela (inclusive o token) mesmo sem clicar em nada
+        # guarda o que está na tela (inclusive o token) mesmo sem clicar em nada
         try:
             salvar()
         except Exception:

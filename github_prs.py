@@ -1,10 +1,10 @@
-"""PRs abertos do GitHub, autenticando com a credencial que o git ja tem.
+"""PRs abertos do GitHub, autenticando com a credencial que o git já tem.
 
-Sem dependencia do `gh` CLI: quem devolve a credencial e o proprio git
-(`git credential fill`), lendo o helper configurado na maquina - no Windows,
+Sem dependência do `gh` CLI: quem devolve a credencial é o próprio git
+(`git credential fill`), lendo o helper configurado na máquina - no Windows,
 o Git Credential Manager que vem junto com o Git for Windows.
 
-O token nao e digitado, nao e guardado por esta ferramenta e nunca vai para o log.
+O token não é digitado, não é guardado por esta ferramenta e nunca vai para o log.
 """
 
 import ctypes
@@ -20,8 +20,8 @@ from cherrypick_tool import GIT, StepError
 TEMPO_LIMITE = 40
 API = "https://api.github.com"
 
-AUTOMATICA = "(automatica pelo repositorio)"
-PADRAO_GIT = "(padrao do git)"
+AUTOMATICA = "(automática pelo repositório)"
+PADRAO_GIT = "(padrão do git)"
 
 CRED_TYPE_GENERIC = 1
 
@@ -38,7 +38,7 @@ class _CREDENTIAL(ctypes.Structure):
 
 
 def contas_guardadas(filtro=u"git:https://github.com*"):
-    """[(alvo, usuario)] das credenciais git do GitHub no Gerenciador do Windows."""
+    """[(alvo, usuário)] das credenciais git do GitHub no Gerenciador do Windows."""
     quantidade = wintypes.DWORD()
     ponteiro = ctypes.POINTER(ctypes.POINTER(_CREDENTIAL))()
     try:
@@ -60,7 +60,7 @@ def contas_guardadas(filtro=u"git:https://github.com*"):
 
 
 def segredo_da_conta(alvo):
-    """Le o segredo de uma credencial guardada - a mesma que o git usaria."""
+    """Lê o segredo de uma credencial guardada - a mesma que o git usaria."""
     ponteiro = ctypes.POINTER(_CREDENTIAL)()
     if not ctypes.windll.advapi32.CredReadW(alvo, CRED_TYPE_GENERIC, 0, ctypes.byref(ponteiro)):
         return ""
@@ -75,29 +75,29 @@ RE_ORIGEM = re.compile(r"github\.com[:/]+([\w.-]+)/([\w.-]+?)(?:\.git)?$", re.I)
 
 
 def repo_do_remote(url_remote):
-    """'https://github.com/Org/repo.git' -> 'Org/repo'. '' se nao reconhecer."""
+    """'https://github.com/Org/repo.git' -> 'Org/repo'. '' se não reconhecer."""
     achado = RE_ORIGEM.search((url_remote or "").strip())
     return "%s/%s" % (achado.group(1), achado.group(2)) if achado else ""
 
 
 def credencial_escolhida(conta, caminho_repo, org_repo):
-    """Devolve (usuario, segredo) conforme a conta escolhida na tela."""
+    """Devolve (usuário, segredo) conforme a conta escolhida na tela."""
     if conta and conta not in (AUTOMATICA, PADRAO_GIT):
         for alvo, usuario in contas_guardadas():
             if usuario == conta:
                 segredo = segredo_da_conta(alvo)
                 if segredo:
                     return usuario, segredo
-        raise StepError("Nao consegui ler o segredo da conta '%s' no Gerenciador de "
+        raise StepError("Não consegui ler o segredo da conta '%s' no Gerenciador de "
                         "Credenciais. Escolha outra conta." % conta)
     if conta == PADRAO_GIT:
         return credencial_do_git(caminho_repo)
-    # automatica: o caminho org/repo e o que faz o git escolher a conta certa
+    # automática: o caminho org/repo é o que faz o git escolher a conta certa
     return credencial_do_git(caminho_repo, org_repo=org_repo)
 
 
 def credencial_do_git(caminho_repo=None, host="github.com", org_repo=""):
-    """Pede ao git a credencial do host. Devolve (usuario, segredo) ou ('', '')."""
+    """Pede ao git a credencial do host. Devolve (usuário, segredo) ou ('', '')."""
     pedido = "protocol=https\nhost=%s\n" % host
     if org_repo:
         pedido += "path=%s\n" % org_repo
@@ -113,7 +113,7 @@ def credencial_do_git(caminho_repo=None, host="github.com", org_repo=""):
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except Exception as exc:
-        raise StepError("Nao foi possivel pedir a credencial ao git (%r)." % (exc,))
+        raise StepError("Não foi possível pedir a credencial ao git (%r)." % (exc,))
     usuario = segredo = ""
     for linha in (proc.stdout or "").splitlines():
         if linha.startswith("username="):
@@ -129,8 +129,8 @@ class GitHub(object):
     def __init__(self, token):
         if not token:
             raise StepError(
-                "O git nao devolveu credencial para o github.com. Faca um `git fetch` "
-                "no repositorio uma vez para o Gerenciador de Credenciais guardar o acesso."
+                "O git não devolveu credencial para o github.com. Faça um `git fetch` "
+                "no repositório uma vez para o Gerenciador de Credenciais guardar o acesso."
             )
         self._token = token
 
@@ -151,14 +151,14 @@ class GitHub(object):
                 raise StepError("GitHub recusou a credencial do git (401).")
             if exc.code == 404:
                 raise StepError(
-                    "GitHub devolveu 404 em %s. A conta que o git usa nao enxerga esse "
-                    "repositorio - confira se e a conta certa para essa organizacao." % url
+                    "GitHub devolveu 404 em %s. A conta que o git usa não enxerga esse "
+                    "repositório - confira se é a conta certa para essa organização." % url
                 )
             if exc.code == 403:
-                raise StepError("GitHub recusou (403): limite de requisicoes ou sem permissao.")
+                raise StepError("GitHub recusou (403): limite de requisições ou sem permissão.")
             raise StepError("GitHub respondeu %s em %s" % (exc.code, url))
         except urllib.error.URLError as exc:
-            raise StepError("Nao foi possivel falar com a API do GitHub (%s)." % exc.reason)
+            raise StepError("Não foi possível falar com a API do GitHub (%s)." % exc.reason)
 
     def usuario(self):
         return self._get(API + "/user").get("login", "?")
@@ -166,9 +166,9 @@ class GitHub(object):
     def revisao(self, org_repo, numero):
         """'aprovado', 'ajustes', 'comentado' ou ''.
 
-        Vale a ultima revisao de cada pessoa. 'comentado' existe porque nem todo
-        time usa o botao de aprovar: saber que alguem ja olhou e comentou ainda
-        distingue o PR revisado do PR em que ninguem encostou.
+        Vale a última revisão de cada pessoa. 'comentado' existe porque nem todo
+        time usa o botão de aprovar: saber que alguém já olhou e comentou ainda
+        distingue o PR revisado do PR em que ninguém encostou.
         """
         try:
             lista = self._get("%s/repos/%s/pulls/%s/reviews?per_page=100"
@@ -192,7 +192,7 @@ class GitHub(object):
         return ""
 
     def revisoes(self, prs, trabalhadores=8, progresso=None):
-        """{(repo, numero): estado} para varios PRs, em paralelo."""
+        """{(repo, número): estado} para vários PRs, em paralelo."""
         import concurrent.futures
 
         resultado = {}
@@ -214,7 +214,7 @@ class GitHub(object):
         return resultado
 
     def prs_abertos(self, org_repo, maximo_paginas=6):
-        """Lista simplificada dos PRs abertos de um repositorio."""
+        """Lista simplificada dos PRs abertos de um repositório."""
         saida, pagina = [], 1
         while pagina <= maximo_paginas:
             lote = self._get("%s/repos/%s/pulls?state=open&per_page=100&page=%d"

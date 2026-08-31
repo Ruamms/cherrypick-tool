@@ -1,12 +1,12 @@
-"""Escreve .xlsx sem dependencia externa.
+"""Escreve .xlsx sem dependência externa.
 
-Um xlsx e um zip de XML. Escrever na mao custa ~100 linhas e mantem a promessa do
-projeto: o exe embute so o Python, nada de biblioteca de terceiros para pesar o
+Um xlsx é um zip de XML. Escrever na mão custa ~100 linhas e mantém a promessa do
+projeto: o exe embute só o Python, nada de biblioteca de terceiros para pesar o
 download e o build.
 
-Suporta o que a exportacao precisa e nada mais: varias planilhas, cabecalho em
-negrito congelado, filtro automatico e celula numerica de verdade (para o Excel
-ordenar DIAS como numero, nao como texto).
+Suporta o que a exportação precisa e nada mais: várias planilhas, cabeçalho em
+negrito congelado, filtro automático e célula numérica de verdade (para o Excel
+ordenar DIAS como número, não como texto).
 """
 
 import re
@@ -60,7 +60,7 @@ def _texto(valor):
 def _celula(ref, valor, negrito=False):
     estilo = ' s="1"' if negrito else ""
     if isinstance(valor, bool):
-        valor = "sim" if valor else "nao"
+        valor = "sim" if valor else "não"
     if isinstance(valor, (int, float)):
         return '<c r="%s"%s><v>%s</v></c>' % (ref, estilo, valor)
     texto = _texto(valor)
@@ -97,7 +97,7 @@ def _planilha(cabecalho, linhas, larguras=None):
 
 
 def escrever(caminho, planilhas):
-    """planilhas: [(nome, cabecalho, linhas, larguras)]. Sobrescreve o arquivo."""
+    """planilhas: [(nome, cabeçalho, linhas, larguras)]. Sobrescreve o arquivo."""
     planilhas = [p for p in planilhas if p]
     if not planilhas:
         raise ValueError("Nada para exportar.")

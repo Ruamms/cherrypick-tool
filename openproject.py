@@ -1,13 +1,13 @@
 """Cliente somente-leitura da API v3 do OpenProject.
 
-Autenticacao por **token de API** (Minha conta -> Tokens de acesso), nunca por senha.
+Autenticação por **token de API** (Minha conta -> Tokens de acesso), nunca por senha.
 
-O token fica guardado so na sua maquina, no arquivo de estado em %APPDATA%, que
-esta fora da pasta do repositorio - nao ha como subir por engano. Alem disso ele
-e cifrado com a DPAPI do Windows, amarrada a sua conta: copiar o arquivo para
-outra maquina ou outro usuario nao serve de nada. Nunca aparece no log.
+O token fica guardado só na sua máquina, no arquivo de estado em %APPDATA%, que
+está fora da pasta do repositório - não há como subir por engano. Além disso ele
+é cifrado com a DPAPI do Windows, amarrada à sua conta: copiar o arquivo para
+outra máquina ou outro usuário não serve de nada. Nunca aparece no log.
 
-Nada aqui escreve no OpenProject: so GET.
+Nada aqui escreve no OpenProject: só GET.
 """
 
 import base64
@@ -37,7 +37,7 @@ def _blob_para_bytes(blob):
 
 
 def proteger(texto):
-    """Cifra com a DPAPI do usuario atual. Devolve base64, ou '' se falhar."""
+    """Cifra com a DPAPI do usuário atual. Devolve base64, ou '' se falhar."""
     if not texto:
         return ""
     try:
@@ -58,7 +58,7 @@ def proteger(texto):
 
 
 def desproteger(texto_base64):
-    """Decifra o que `proteger` gerou. '' se nao for desta maquina/usuario."""
+    """Decifra o que `proteger` gerou. '' se não for desta máquina/usuário."""
     if not texto_base64:
         return ""
     try:
@@ -79,7 +79,7 @@ def desproteger(texto_base64):
 
 
 class OpenProject(object):
-    """GETs na API v3. Sem escrita, por decisao de projeto."""
+    """GETs na API v3. Sem escrita, por decisão de projeto."""
 
     def __init__(self, base_url, token):
         if not base_url:
@@ -108,12 +108,12 @@ class OpenProject(object):
             if exc.code == 401:
                 raise StepError("Token recusado (401). Gere outro em Minha conta -> Tokens de acesso.")
             if exc.code == 403:
-                raise StepError("Sem permissao (403) para esse recurso no OpenProject.")
+                raise StepError("Sem permissão (403) para esse recurso no OpenProject.")
             if exc.code == 404:
-                raise StepError("Nao encontrado (404): %s" % url)
+                raise StepError("Não encontrado (404): %s" % url)
             raise StepError("OpenProject respondeu %s em %s" % (exc.code, url))
         except urllib.error.URLError as exc:
-            raise StepError("Nao foi possivel falar com o OpenProject (%s). "
+            raise StepError("Não foi possível falar com o OpenProject (%s). "
                             "Confira a URL, a rede/VPN e o certificado." % exc.reason)
 
     # -------------------------------------------------------- leituras
@@ -127,9 +127,9 @@ class OpenProject(object):
         return [t.get("name", "") for t in dados.get("_embedded", {}).get("elements", [])]
 
     def status_fechados(self):
-        """Nomes dos status marcados como 'fechado' na propria instancia.
+        """Nomes dos status marcados como 'fechado' na própria instância.
 
-        E o unico sinal objetivo de 'a tarefa terminou' que a API oferece - melhor
+        É o único sinal objetivo de 'a tarefa terminou' que a API oferece - melhor
         do que adivinhar pelo nome do status.
         """
         dados = self._get("/api/v3/statuses")
@@ -143,10 +143,10 @@ class OpenProject(object):
         return resultados.get("_embedded", {}).get("elements", [])
 
     def work_packages_por_id(self, ids, tamanho_lote=100):
-        """Busca work packages por uma lista de numeros, em lotes.
+        """Busca work packages por uma lista de números, em lotes.
 
         Usa o filtro `id` da API v3, o que dispensa query salva e cobre tarefa
-        de qualquer projeto - o que interessa e o numero que veio do PR.
+        de qualquer projeto - o que interessa é o número que veio do PR.
         """
         achados = []
         ids = [str(i) for i in ids if str(i).strip()]
@@ -161,10 +161,10 @@ class OpenProject(object):
         return achados
 
     def campos_customizados(self, wp, nomes):
-        """{nome legivel: valor} dos custom fields preenchidos.
+        """{nome legível: valor} dos custom fields preenchidos.
 
-        Valores simples ficam no corpo; listas e opcoes ficam em `_links`, com
-        o texto em `title` - ler so o corpo perderia metade dos casos.
+        Valores simples ficam no corpo; listas e opções ficam em `_links`, com
+        o texto em `title` - ler só o corpo perderia metade dos casos.
         """
         valores = {}
         for chave, bruto in wp.items():
@@ -188,7 +188,7 @@ class OpenProject(object):
         return valores
 
     def comentarios(self, wp_id):
-        """Texto de todos os comentarios/atividades de um work package."""
+        """Texto de todos os comentários/atividades de um work package."""
         dados = self._get("/api/v3/work_packages/%s/activities" % wp_id)
         textos = []
         for item in dados.get("_embedded", {}).get("elements", []):
@@ -198,7 +198,7 @@ class OpenProject(object):
         return textos
 
     def nomes_de_campos(self, wp):
-        """Mapa {chave customFieldN: nome legivel}, lido do schema do work package."""
+        """Mapa {chave customFieldN: nome legível}, lido do schema do work package."""
         href = ((wp.get("_links") or {}).get("schema") or {}).get("href")
         if not href:
             return {}
@@ -213,13 +213,13 @@ class OpenProject(object):
         return nomes
 
 
-# ---------------------------------------------------------------- extracao
+# ---------------------------------------------------------------- extração
 
 RE_PR = re.compile(r"github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)", re.I)
 
 
 def prs_do_texto(textos):
-    """Numeros de PR citados, na ordem de aparicao, sem repetir."""
+    """Números de PR citados, na ordem de aparição, sem repetir."""
     achados = []
     for texto in textos:
         for _org, _repo, numero in RE_PR.findall(texto or ""):
@@ -229,14 +229,14 @@ def prs_do_texto(textos):
 
 
 # nomes dos campos personalizados lidos da tarefa. Ficam aqui, com variantes,
-# porque quem renomeia o campo no OpenProject nao avisa ninguem.
+# porque quem renomeia o campo no OpenProject não avisa ninguém.
 CAMPO_ENTREGA = ("confirmar entrega ao cliente", "confirmar entrega")
 CAMPO_RAMOS = ("ramos para disponibilizacao", "ramos para disponibilizacao dos ajustes")
 PREFIXO_RAMOS = "ramos para disponibiliza"
 
 
 def _chave_campo(nome):
-    """Nome de campo comparavel: sem acento, sem pontuacao, minusculo."""
+    """Nome de campo comparável: sem acento, sem pontuação, minúsculo."""
     texto = unicodedata.normalize("NFKD", str(nome or ""))
     texto = "".join(c for c in texto if not unicodedata.combining(c)).lower()
     return " ".join(re.sub(r"[^a-z0-9]+", " ", texto).split())
@@ -245,9 +245,9 @@ def _chave_campo(nome):
 def campo_por_nome(campos, alvos, prefixo=""):
     """Valor do campo personalizado cujo nome casa com um dos alvos.
 
-    Compara sem acento, pontuacao nem caixa - o '?' de 'Confirmar entrega ao
-    cliente?' nao pode decidir se o campo e achado. Devolve None se nenhum casa,
-    que e diferente de achar o campo vazio.
+    Compara sem acento, pontuação nem caixa - o '?' de 'Confirmar entrega ao
+    cliente?' não pode decidir se o campo é achado. Devolve None se nenhum casa,
+    que é diferente de achar o campo vazio.
     """
     procurados = [_chave_campo(a) for a in alvos]
     achado = None

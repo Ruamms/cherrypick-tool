@@ -1,9 +1,9 @@
 """Testes da regra do ciclo. Rode com: python -m unittest -v
 
-So stdlib, como o resto do projeto. Metade dos testes existe para travar o
-comportamento ANTIGO (uma branch de producao, sem os campos novos do
-OpenProject): a evolucao para multiplas branches nao pode mudar o que a
-ferramenta ja respondia.
+Só stdlib, como o resto do projeto. Metade dos testes existe para travar o
+comportamento ANTIGO (uma branch de produção, sem os campos novos do
+OpenProject): a evolucao para múltiplas branches não pode mudar o que a
+ferramenta já respondia.
 """
 
 import datetime
@@ -57,13 +57,13 @@ class TestVersoes(unittest.TestCase):
             "2602/2601": ["2602", "2601"],
             "  2602  2601 2602 ": ["2602", "2601"],
             "": [],
-            "sem versao aqui": [],
+            "sem versão aqui": [],
         }
         for texto, esperado in casos.items():
             self.assertEqual(ciclo.versoes_do_texto(texto), esperado, texto)
 
     def test_nao_confunde_com_numero_de_tarefa(self):
-        # 5 a 7 digitos e tarefa, nao versao: nada de recorte no meio do numero
+        # 5 a 7 dígitos e tarefa, não versão: nada de recorte no meio do número
         self.assertEqual(ciclo.versoes_do_texto("tarefa 108692"), [])
 
     def test_modelo_sai_da_branch_configurada(self):
@@ -129,7 +129,7 @@ class TestBranchesObrigatorias(unittest.TestCase):
 
 
 class TestRegrasAntigas(unittest.TestCase):
-    """Sem homologacao e sem os campos novos, a saida tem de ser a de antes."""
+    """Sem homologação e sem os campos novos, a saída tem de ser a de antes."""
 
     def montar(self, prs, tarefas, **kw):
         kw.setdefault("historico", {MAIN: set(), PROD: set()})
@@ -153,7 +153,7 @@ class TestRegrasAntigas(unittest.TestCase):
                              {"109453": tarefa("Divida Tecnica")})
         linha = uma(linhas, "109453")
         self.assertEqual(linha["pendencia"], ciclo.APROVAR)
-        self.assertIn("aguardando aprovacao", linha["pr_producao"])
+        self.assertIn("aguardando aprovação", linha["pr_producao"])
 
     def test_concluida_com_pr_aberto_pode_mergear(self):
         linhas = self.montar([pr(8030, MAIN, "109866")],
@@ -217,10 +217,10 @@ class TestMultiplasBranches(unittest.TestCase):
                              {"108692": tarefa("Corretiva")})
         linha = uma(linhas, "108692")
         self.assertEqual(linha["obrigatorias"], [MAIN, PROD, HOMO])
-        self.assertIn("aguardando aprovacao", situacao(linha, PROD))
+        self.assertIn("aguardando aprovação", situacao(linha, PROD))
         self.assertEqual(situacao(linha, HOMO), ciclo.SEM_PR)
         self.assertEqual(linha["pendencia"], ciclo.SEM_VERSAO)
-        self.assertIn("v2.2602: PR nao aberto", linha["pendente_em"])
+        self.assertIn("v2.2602: PR não aberto", linha["pendente_em"])
 
     def test_adaptativa_com_entrega_e_dois_ramos(self):
         """Item 13: 109866 adaptativa, entrega=True, ramos 2602/2601."""
@@ -230,15 +230,15 @@ class TestMultiplasBranches(unittest.TestCase):
             historico={MAIN: {"109866"}, PROD: set(), HOMO: set()})
         linha = uma(linhas, "109866")
         self.assertEqual(sorted(linha["obrigatorias"]), [MAIN, PROD, HOMO])
-        self.assertIn("aguardando aprovacao", situacao(linha, PROD))
+        self.assertIn("aguardando aprovação", situacao(linha, PROD))
         self.assertEqual(situacao(linha, HOMO), ciclo.SEM_PR)
         self.assertEqual(linha["pendencia"], ciclo.SEM_VERSAO)
         self.assertNotIn(MAIN, linha["pendente_em"])
         self.assertIn("v2.2601: aguardando", linha["pendente_em"])
-        self.assertIn("v2.2602: PR nao aberto", linha["pendente_em"])
+        self.assertIn("v2.2602: PR não aberto", linha["pendente_em"])
 
     def test_evolutiva_sem_entrega_nao_cria_pendencia_de_versao(self):
-        """Item 14: 109757 evolutiva, entrega=False -> so a principal."""
+        """Item 14: 109757 evolutiva, entrega=False -> só a principal."""
         linhas = self.montar(
             [pr(8085, MAIN, "109757", atualizado="2026-08-26")],
             {"109757": tarefa("Evolutiva", entrega=False)})
@@ -249,7 +249,7 @@ class TestMultiplasBranches(unittest.TestCase):
         self.assertEqual(linha["pendencia"], ciclo.OK)
 
     def test_entrega_so_na_homologacao_marca_producao_como_nao_solicitada(self):
-        """Item 15: ramos 2602 -> a 2601 nao e cobrada."""
+        """Item 15: ramos 2602 -> a 2601 não e cobrada."""
         linhas = self.montar(
             [pr(8100, MAIN, "108777")],
             {"108777": tarefa("Adaptativa", entrega=True, ramos="2602")},
@@ -258,15 +258,15 @@ class TestMultiplasBranches(unittest.TestCase):
         self.assertEqual(linha["obrigatorias"], [MAIN, HOMO])
         self.assertEqual(situacao(linha, PROD), ciclo.NAO_SOLICITADO)
         self.assertEqual(situacao(linha, HOMO), ciclo.SEM_PR)
-        # o PR aberto na principal tambem e pendencia: ainda falta mergear
-        self.assertIn("v2.2602: PR nao aberto", linha["pendente_em"])
+        # o PR aberto na principal também e pendência: ainda falta mergear
+        self.assertIn("v2.2602: PR não aberto", linha["pendente_em"])
         self.assertNotIn(PROD, linha["pendente_em"])
 
     def test_mergeado_em_uma_e_faltando_na_outra(self):
-        """Item 7: 2601 mergeado, 2602 sem PR -> pendencia so na 2602.
+        """Item 7: 2601 mergeado, 2602 sem PR -> pendência só na 2602.
 
-        Sem nenhum PR aberto a tarefa so entra pela regra do build vazio - e
-        mesmo por esse caminho ela tem de trazer a situacao de cada branch.
+        Sem nenhum PR aberto a tarefa só entra pela regra do build vazio - e
+        mesmo por esse caminho ela tem de trazer a situação de cada branch.
         """
         linhas = self.montar(
             [], {"108692": tarefa("Corretiva", fechado=True, build="")},
@@ -275,7 +275,7 @@ class TestMultiplasBranches(unittest.TestCase):
         self.assertEqual(situacao(linha, MAIN), ciclo.MERGEADO)
         self.assertEqual(situacao(linha, PROD), ciclo.MERGEADO)
         self.assertEqual(situacao(linha, HOMO), ciclo.SEM_PR)
-        self.assertEqual(linha["pendente_em"], "v2.2602: PR nao aberto")
+        self.assertEqual(linha["pendente_em"], "v2.2602: PR não aberto")
 
     def test_ramo_fora_das_branches_nomeadas(self):
         dados = tarefa("Adaptativa", entrega=True, ramos="2502")
@@ -285,7 +285,7 @@ class TestMultiplasBranches(unittest.TestCase):
         linha = uma(linhas, "108888")
         self.assertIn("v2.2502", linha["obrigatorias"])
         self.assertEqual(linha["pendencia"], ciclo.SEM_VERSAO)
-        self.assertIn("v2.2502: PR nao aberto", linha["pendente_em"])
+        self.assertIn("v2.2502: PR não aberto", linha["pendente_em"])
 
     def test_pr_de_homologacao_aberto_aguarda_aprovacao(self):
         linhas = self.montar(
@@ -294,12 +294,12 @@ class TestMultiplasBranches(unittest.TestCase):
             historico={MAIN: {"109900"}, PROD: set(), HOMO: set()})
         linha = uma(linhas, "109900")
         self.assertEqual(linha["pendencia"], ciclo.APROVAR)
-        self.assertIn("aguardando aprovacao", linha["pr_homologacao"])
+        self.assertIn("aguardando aprovação", linha["pr_homologacao"])
 
     def test_ramos_com_versao_ilegivel_nao_inventa_branch(self):
         linhas = self.montar(
             [pr(8400, MAIN, "109901")],
-            {"109901": tarefa("Adaptativa", entrega=True, ramos="proxima release")},
+            {"109901": tarefa("Adaptativa", entrega=True, ramos="próxima release")},
             historico={MAIN: {"109901"}, PROD: set(), HOMO: set()})
         self.assertEqual(uma(linhas, "109901")["obrigatorias"], [MAIN])
 
@@ -324,13 +324,62 @@ class TestFormatoLongo(unittest.TestCase):
         self.assertEqual([l[3] for l in longo], [MAIN, PROD, HOMO])
         self.assertEqual(len(longo[0]), len(ciclo.COLUNAS_LONGO))
         por_branch = {l[3]: l for l in longo}
-        self.assertEqual(por_branch[HOMO][4], "sim")     # obrigatoria
+        self.assertEqual(por_branch[HOMO][4], "sim")     # obrigatória
         self.assertEqual(por_branch[HOMO][6], "sim")     # pendente
         self.assertEqual(por_branch[HOMO][8], "sim")     # entrega ao cliente
 
+    def test_valor_negativo_sai_acentuado(self):
+        """O "não" da planilha e da grade e texto visível: tem de vir acentuado."""
+        linhas = ciclo.montar(
+            [pr(8085, MAIN, "109757")],
+            {"109757": tarefa("Evolutiva", entrega=False)},
+            PROD, MAIN, [], [], hoje=HOJE, base_homologacao=HOMO,
+            historico={MAIN: set(), PROD: set(), HOMO: set()})
+        por_branch = {l[3]: l for l in ciclo.linhas_por_branch(linhas)}
+        self.assertEqual(por_branch[HOMO][4], "não")     # obrigatória
+        self.assertEqual(por_branch[HOMO][6], "não")     # pendente
+        self.assertEqual(por_branch[HOMO][8], "não")     # entrega ao cliente
+
+
+class TestChavesSemAcento(unittest.TestCase):
+    """As chaves comparadas DEPOIS de remover acento tem de ficar sem acento.
+
+    Acentuar uma delas nao quebra nada visível - so faz o casamento parar de
+    achar o tipo/campo, em silêncio. Daí o teste.
+    """
+
+    def test_tipos_conhecidos_sem_acento(self):
+        for tipo in ciclo.TIPOS_CONHECIDOS:
+            self.assertEqual(tipo, ciclo.sem_acento(tipo), tipo)
+
+    def test_nomes_de_campo_sem_acento(self):
+        import openproject
+        for nome in openproject.CAMPO_ENTREGA + openproject.CAMPO_RAMOS:
+            self.assertEqual(nome, ciclo.sem_acento(nome), nome)
+        self.assertEqual(openproject.PREFIXO_RAMOS,
+                         ciclo.sem_acento(openproject.PREFIXO_RAMOS))
+
+    def test_casa_com_o_nome_acentuado_do_gerenciador(self):
+        import openproject
+        self.assertEqual(ciclo.tipo_do_titulo("Dívida Técnica"), "divida tecnica")
+        self.assertEqual(ciclo.tipo_do_titulo("Divida Tecnica"), "divida tecnica")
+        campos = {"Confirmar entrega ao cliente?": True,
+                  "Ramos para disponibilização": "2602 - 2601"}
+        self.assertIs(openproject.campo_por_nome(campos, openproject.CAMPO_ENTREGA), True)
+        self.assertEqual(
+            openproject.campo_por_nome(campos, openproject.CAMPO_RAMOS,
+                                       openproject.PREFIXO_RAMOS),
+            "2602 - 2601")
+
+    def test_valores_booleanos_aceitos_sem_acento(self):
+        for valor in ("sim", "Sim", "SIM"):
+            self.assertTrue(ciclo.verdadeiro(valor), valor)
+        for valor in ("não", "Não", "nao", "NAO"):
+            self.assertFalse(ciclo.verdadeiro(valor), valor)
+
 
 class TestContratoDaLinha(unittest.TestCase):
-    """A grade e a exportacao leem estas chaves de toda linha, nos dois caminhos
+    """A grade e a exportação leem estas chaves de toda linha, nos dois caminhos
     que produzem linha: agrupada por PR aberto e a que entra pelo build vazio."""
 
     CHAVES = ("pendencia", "pendente_em", "tarefa", "tipo", "status_wp", "entrega",
@@ -372,15 +421,15 @@ class TestExcel(unittest.TestCase):
     def test_escreve_duas_abas_com_o_que_falta(self):
         excel.escrever(self.caminho, [
             ("Tarefas", ["TAREFA", "PENDENTE EM", "DIAS"],
-             [["108692", "v2.2602: PR nao aberto", 32]], [10, 40, 6]),
-            ("Pendencias por branch", list(ciclo.COLUNAS_LONGO),
-             [["108692", "Corretiva", "Em teste", HOMO, "sim", "PR nao aberto",
+             [["108692", "v2.2602: PR não aberto", 32]], [10, 40, 6]),
+            ("Pendências por branch", list(ciclo.COLUNAS_LONGO),
+             [["108692", "Corretiva", "Em teste", HOMO, "sim", "PR não aberto",
                "sim", ciclo.SEM_VERSAO, "sim", "2602", "Erro ao copiar perfil"]], None),
         ])
         with zipfile.ZipFile(self.caminho) as zip_saida:
             self.assertIsNone(zip_saida.testzip())
             self.assertIn("xl/worksheets/sheet2.xml", zip_saida.namelist())
-            self.assertIn("v2.2602: PR nao aberto", self.textos(zip_saida, 1))
+            self.assertIn("v2.2602: PR não aberto", self.textos(zip_saida, 1))
             longo = self.textos(zip_saida, 2)
             self.assertIn(HOMO, longo)
             self.assertIn(ciclo.SEM_VERSAO, longo)

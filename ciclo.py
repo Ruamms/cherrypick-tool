@@ -1,26 +1,26 @@
 """Cruza PRs abertos (GitHub) com work packages (OpenProject) e com o git local.
 
-Regra do processo: certos tipos de tarefa - tipicamente corretiva e divida
-tecnica - precisam chegar nas branches de versao (producao e homologacao), e nao
-so na principal. Outros tipos ficam so na principal, a menos que a propria
-tarefa peca disponibilizacao em outras versoes. Quais tipos exigem o que e
-configuravel: nada aqui presume o processo de nenhuma empresa.
+Regra do processo: certos tipos de tarefa - tipicamente corretiva e dívida
+técnica - precisam chegar nas branches de versão (produção e homologação), e não
+só na principal. Outros tipos ficam só na principal, a menos que a própria
+tarefa peça disponibilização em outras versões. Quais tipos exigem o que é
+configurável: nada aqui presume o processo de nenhuma empresa.
 
-Quem decide em quais branches a tarefa TEM de estar e um lugar so:
-branches_obrigatorias(). Situacao por branch, pendencia, coluna PENDENTE EM e
-exportacao leem todas dessa mesma resposta - nao existe segunda regra.
+Quem decide em quais branches a tarefa TEM de estar é um lugar só:
+branches_obrigatórias(). Situação por branch, pendência, coluna PENDENTE EM e
+exportação leem todas dessa mesma resposta - não existe segunda regra.
 
-Cada branch vira uma frase, nao um numero de PR:
+Cada branch vira uma frase, não um número de PR:
 
-    mergeado                 - a tarefa aparece no historico daquela branch
-    aprovado, falta mergear  - PR aberto e ja aprovado na revisao
-    comentado, sem aprovar   - alguem revisou e comentou, mas nao aprovou
-    revisao pediu ajuste     - PR aberto com pedido de mudanca
-    aguardando aprovacao     - PR aberto, sem revisao ainda
+    mergeado                 - a tarefa aparece no histórico daquela branch
+    aprovado, falta mergear  - PR aberto e já aprovado na revisão
+    comentado, sem aprovar   - alguém revisou e comentou, mas não aprovou
+    revisão pediu ajuste     - PR aberto com pedido de mudança
+    aguardando aprovação     - PR aberto, sem revisão ainda
     rascunho                 - PR aberto como draft
-    PR nao aberto            - nada aberto e nada no historico daquela branch
-    sem PR aberto            - nada aberto e nao havia clone local para conferir
-    nao solicitado           - a branch nao e obrigatoria para essa tarefa
+    PR não aberto            - nada aberto e nada no histórico daquela branch
+    sem PR aberto            - nada aberto e não havia clone local para conferir
+    não solicitado           - a branch não é obrigatória para essa tarefa
 """
 
 import datetime
@@ -28,9 +28,9 @@ import re
 import unicodedata
 
 MERGEAR = "PODE MERGEAR"
-SEM_PROD = "SEM PR DE PRODUCAO"
-SEM_VERSAO = "FALTA EM OUTRA VERSAO"
-APROVAR = "AGUARDA APROVACAO"
+SEM_PROD = "SEM PR DE PRODUÇÃO"
+SEM_VERSAO = "FALTA EM OUTRA VERSÃO"
+APROVAR = "AGUARDA APROVAÇÃO"
 SEM_BUILD = "FALTA A BUILD (X5)"
 PARADO = "PARADO"
 OK = "OK"
@@ -49,28 +49,28 @@ CORES_CICLO = {
 }
 
 LEGENDA_CICLO = (
-    (MERGEAR, "a tarefa esta num status de concluida e o PR continua aberto - e so mergear"),
-    (SEM_PROD, "o tipo exige producao e nao ha PR aberto nem nada no historico da branch"),
-    (SEM_VERSAO, "falta em outra branch obrigatoria (homologacao ou versao pedida na tarefa)"),
-    (APROVAR, "existe PR aberto para uma branch obrigatoria esperando revisao ha N dias"),
-    (SEM_BUILD, "tarefa concluida, sem PR aberto, e com o campo de build vazio"),
-    (PARADO, "PR aberto sem nenhuma atualizacao ha mais dias que o limite"),
-    (OK, "nada a fazer pelo que da para ver"),
+    (MERGEAR, "a tarefa está num status de concluída e o PR continua aberto - é só mergear"),
+    (SEM_PROD, "o tipo exige produção e não há PR aberto nem nada no histórico da branch"),
+    (SEM_VERSAO, "falta em outra branch obrigatória (homologação ou versão pedida na tarefa)"),
+    (APROVAR, "existe PR aberto para uma branch obrigatória esperando revisão há N dias"),
+    (SEM_BUILD, "tarefa concluída, sem PR aberto, e com o campo de build vazio"),
+    (PARADO, "PR aberto sem nenhuma atualização há mais dias que o limite"),
+    (OK, "nada a fazer pelo que dá para ver"),
 )
 
-# situacoes de cada branch
+# situações de cada branch
 MERGEADO = "mergeado"
 APROVADO = "aprovado, falta mergear"
-AJUSTES = "revisao pediu ajuste"
-AGUARDANDO = "aguardando aprovacao"
+AJUSTES = "revisão pediu ajuste"
+AGUARDANDO = "aguardando aprovação"
 COMENTADO = "comentado, sem aprovar"
 RASCUNHO = "rascunho"
-SEM_PR = "PR nao aberto"
+SEM_PR = "PR não aberto"
 NAO_CONFERIDO = "sem PR aberto"
-NAO_SOLICITADO = "nao solicitado"
+NAO_SOLICITADO = "não solicitado"
 
-# tipos de manutencao mais comuns, usados so como reserva quando a tarefa nao
-# esta no gerenciador: o titulo do PR costuma trazer a natureza.
+# tipos de manutenção mais comuns, usados só como reserva quando a tarefa não
+# está no gerenciador: o título do PR costuma trazer a natureza.
 TIPOS_CONHECIDOS = ("divida tecnica", "corretiva", "adaptativa", "evolutiva", "regressao")
 
 
@@ -80,7 +80,7 @@ def sem_acento(texto):
 
 
 def tarefa_do_pr(pr):
-    """Numero da tarefa a partir do branch (fb_123456_2601) ou do titulo."""
+    """Número da tarefa a partir do branch (fb_123456_2601) ou do título."""
     for origem in (pr.get("head", ""), pr.get("titulo", "")):
         limpo = re.sub(r"\(#\d+\)", " ", origem)
         achado = re.findall(r"\b\d{5,7}\b", limpo)
@@ -90,7 +90,7 @@ def tarefa_do_pr(pr):
 
 
 def tipo_do_titulo(titulo):
-    """Natureza deduzida do titulo do PR. '' se nao reconhecer."""
+    """Natureza deduzida do título do PR. '' se não reconhecer."""
     limpo = sem_acento(titulo)
     for tipo in TIPOS_CONHECIDOS:
         if tipo in limpo:
@@ -99,26 +99,26 @@ def tipo_do_titulo(titulo):
 
 
 def mesma_branch(um, outro):
-    """Compara sem diferenciar maiusculas: a API do GitHub costuma devolver o nome
-    da branch em minusculas onde o git local mostra em maiusculas."""
+    """Compara sem diferenciar maiúsculas: a API do GitHub costuma devolver o nome
+    da branch em minúsculas onde o git local mostra em maiúsculas."""
     return sem_acento(um) == sem_acento(outro)
 
 
-# nome antigo, mantido: a comparacao e a mesma para qualquer branch
+# nome antigo, mantido: a comparação é a mesma para qualquer branch
 e_producao = mesma_branch
 
 
-# ---------------------------------------------------------------- versoes
+# ---------------------------------------------------------------- versões
 
 def versoes_do_texto(texto):
-    """Versoes de 4 digitos citadas num texto livre, na ordem, sem repetir.
+    """Versões de 4 dígitos citadas num texto livre, na ordem, sem repetir.
 
-    O campo 'ramos para disponibilizacao' nao tem formato fixo: 'v2.2602',
-    '2602 - 2601', '2602/2601' e '2602, 2601' aparecem todos. O unico padrao
-    confiavel sao os 4 digitos, e e so isso que lemos - o separador nao importa.
+    O campo 'ramos para disponibilização' não tem formato fixo: 'v2.2602',
+    '2602 - 2601', '2602/2601' e '2602, 2601' aparecem todos. O único padrão
+    confiável são os 4 dígitos, e é só isso que lemos - o separador não importa.
     """
     achadas = []
-    # str(): campo numerico no gerenciador volta como int, nao como texto
+    # str(): campo numérico no gerenciador volta como int, não como texto
     for versao in re.findall(r"\b\d{4}\b", str(texto or "")):
         if versao not in achadas:
             achadas.append(versao)
@@ -129,7 +129,7 @@ def modelo_de_branch(*nomes):
     """Deriva o formato do nome de branch de exemplos: 'v2.2601' -> 'v2.%s'.
 
     Assim o '2602' que vem do OpenProject vira o nome de branch que ESTE
-    repositorio usa, sem 'v2.' fixo no codigo. Sem exemplo, devolve '%s'.
+    repositório usa, sem 'v2.' fixo no código. Sem exemplo, devolve '%s'.
     """
     for nome in nomes:
         achadas = list(re.finditer(r"\b\d{4}\b", str(nome or "")))
@@ -140,8 +140,8 @@ def modelo_de_branch(*nomes):
 
 
 def branch_da_versao(versao, modelo="%s", conhecidas=()):
-    """'2602' -> 'v2.2602'. Se uma branch conhecida ja e dessa versao, usa o nome
-    dela: o que o usuario digitou vale mais que o modelo deduzido."""
+    """'2602' -> 'v2.2602'. Se uma branch conhecida já é dessa versão, usa o nome
+    dela: o que o usuário digitou vale mais que o modelo deduzido."""
     for nome in conhecidas:
         if nome and versao in versoes_do_texto(nome):
             return nome
@@ -149,7 +149,7 @@ def branch_da_versao(versao, modelo="%s", conhecidas=()):
 
 
 def verdadeiro(valor):
-    """Booleano do OpenProject: aceita bool, 'sim'/'nao', 'true'/'false', 1/0."""
+    """Booleano do OpenProject: aceita bool, 'sim'/'não', 'true'/'false', 1/0."""
     if isinstance(valor, bool):
         return valor
     if valor is None:
@@ -159,21 +159,21 @@ def verdadeiro(valor):
 
 
 def branches_obrigatorias(tipo, dados, cfg):
-    """Branches em que a tarefa TEM de estar. Regra unica da aplicacao.
+    """Branches em que a tarefa TEM de estar. Regra única da aplicação.
 
-    dados: o registro da tarefa ({"entrega", "ramos", ...}). cfg: o que esta
-    configurado na tela ({"principal", "producao", "homologacao",
+    dados: o registro da tarefa ({"entrega", "ramos", ...}). cfg: o que está
+    configurado na tela ({"principal", "produção", "homologação",
     "tipos_exigem"}).
 
-        1. a principal (master) e sempre obrigatoria;
-        2. tipo marcado em 'Tipos que exigem producao' -> producao e
-           homologacao (a regra antiga, estendida da producao para as duas
-           branches de versao configuradas);
-        3. 'Confirmar entrega ao cliente?' verdadeiro -> as versoes citadas em
-           'ramos para disponibilizacao', qualquer que seja o tipo.
+        1. a principal (master) é sempre obrigatória;
+        2. tipo marcado em 'Tipos que exigem produção' -> produção e
+           homologação (a regra antiga, estendida da produção para as duas
+           branches de versão configuradas);
+        3. 'Confirmar entrega ao cliente?' verdadeiro -> as versões citadas em
+           'ramos para disponibilização', qualquer que seja o tipo.
 
-    Versao que a tarefa nao pediu nao entra: e o que separa 'PR nao aberto' de
-    'nao solicitado' na coluna daquela branch.
+    Versão que a tarefa não pediu não entra: é o que separa 'PR não aberto' de
+    'não solicitado' na coluna daquela branch.
     """
     producao = (cfg.get("producao") or "").strip()
     homologacao = (cfg.get("homologacao") or "").strip()
@@ -196,7 +196,7 @@ def branches_obrigatorias(tipo, dados, cfg):
     return obrigatorias
 
 
-# ---------------------------------------------------------------- situacao
+# ---------------------------------------------------------------- situação
 
 def _dias_desde(texto_data, hoje):
     try:
@@ -209,9 +209,9 @@ def _dias_desde(texto_data, hoje):
 def situacao_do_lado(prs_do_lado, revisoes, tarefa, historico, hoje, obrigatoria=True):
     """(frase, ja_esta_la) descrevendo uma branch.
 
-    historico: numeros de tarefa vistos no historico daquela branch, ou None
-    quando nao havia clone local para conferir. obrigatoria=False troca o
-    'PR nao aberto' por 'nao solicitado': a ausencia ali nao e pendencia.
+    histórico: números de tarefa vistos no histórico daquela branch, ou None
+    quando não havia clone local para conferir. obrigatória=False troca o
+    'PR não aberto' por 'não solicitado': a ausência ali não é pendência.
     """
     if prs_do_lado:
         partes = []
@@ -239,7 +239,7 @@ def situacao_do_lado(prs_do_lado, revisoes, tarefa, historico, hoje, obrigatoria
 
 
 def _lado(nome, prs_do_grupo, obrigatorias, revisoes, tarefa, historico, hoje):
-    """Registro de uma branch: os PRs dela, se e obrigatoria e como esta."""
+    """Registro de uma branch: os PRs dela, se é obrigatória e como está."""
     prs = [p for p in prs_do_grupo if mesma_branch(p.get("base", ""), nome)]
     obrigatoria = any(mesma_branch(nome, o) for o in obrigatorias)
     texto, mergeado = situacao_do_lado(
@@ -258,12 +258,12 @@ def _lado(nome, prs_do_grupo, obrigatorias, revisoes, tarefa, historico, hoje):
 def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
            status_libera, dias_parado=7, hoje=None, revisoes=None, historico=None,
            base_homologacao="", modelo_branch=""):
-    """Agrupa os PRs abertos por tarefa e aponta em qual branch ela esta pendente.
+    """Agrupa os PRs abertos por tarefa e aponta em qual branch ela está pendente.
 
-    tarefas: {numero: {"tipo","status","fechado","assunto","build","entrega","ramos"}}.
-    revisoes: {(repo, numero_pr): "aprovado"|"ajustes"|"comentado"|""}.
-    historico: {nome_da_branch: set de numeros de tarefa}, None naquela branch
-    quando nao havia clone local para conferir.
+    tarefas: {número: {"tipo","status","fechado","assunto","build","entrega","ramos"}}.
+    revisões: {(repo, número_pr): "aprovado"|"ajustes"|"comentado"|""}.
+    histórico: {nome_da_branch: set de números de tarefa}, None naquela branch
+    quando não havia clone local para conferir.
     """
     hoje = hoje or datetime.date.today()
     revisoes = revisoes or {}
@@ -276,8 +276,8 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
         "tipos_exigem": tipos_exigem,
         "modelo": modelo_branch or modelo_de_branch(base_producao, base_homologacao),
     }
-    # dict.fromkeys: se a mesma branch for digitada em dois campos, ela nao pode
-    # virar duas colunas nem contar a pendencia duas vezes
+    # dict.fromkeys: se a mesma branch for digitada em dois campos, ela não pode
+    # virar duas colunas nem contar a pendência duas vezes
     nomeadas = list(dict.fromkeys(
         n for n in (base_principal, base_producao, base_homologacao) if n))
 
@@ -295,13 +295,13 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
         dados = tarefas.get(tarefa, {})
         tipo = dados.get("tipo") or tipo_do_titulo(prs_do_grupo[0].get("titulo", ""))
         origem_tipo = "gerenciador" if dados.get("tipo") else (
-            "titulo do PR" if tipo else "nao identificado")
+            "título do PR" if tipo else "não identificado")
         status_wp = dados.get("status", "")
 
         obrigatorias = branches_obrigatorias(tipo, dados, cfg)
 
-        # as tres branches nomeadas tem coluna propria; as demais entram por
-        # serem obrigatorias (ramos) ou por terem PR aberto (outras branches)
+        # as três branches nomeadas têm coluna própria; as demais entram por
+        # serem obrigatórias (ramos) ou por terem PR aberto (outras branches)
         extras = [n for n in obrigatorias
                   if not any(mesma_branch(n, x) for x in nomeadas)]
         for pr in prs_do_grupo:
@@ -319,13 +319,13 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
 
         texto_prod = lado_prod["situacao"] if lado_prod else ""
         pendentes = [l for l in lados if l["pendente"]]
-        # so a producao mantem a pendencia historica; as outras branches
-        # obrigatorias caem em SEM_VERSAO, para o rotulo nao mentir
+        # só a produção mantém a pendência histórica; as outras branches
+        # obrigatórias caem em SEM_VERSÃO, para o rótulo não mentir
         prod_sem_pr = bool(lado_prod and lado_prod["pendente"] and not lado_prod["prs"])
         outras_sem_pr = [l for l in pendentes if not l["prs"]
                          and l is not lado_prod and l is not lado_principal]
-        # PR aberto em branch de versao obrigatoria (a producao conta sempre,
-        # como antes, mesmo quando o tipo nao a exige)
+        # PR aberto em branch de versão obrigatória (a produção conta sempre,
+        # como antes, mesmo quando o tipo não a exige)
         prs_em_versao = [l for l in lados if l["prs"] and l is not lado_principal
                          and (l["obrigatoria"] or l is lado_prod)]
 
@@ -337,26 +337,26 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
 
         if concluida and prs_do_grupo:
             pendencia = MERGEAR
-            detalhe = ("tarefa em '%s' (status de concluida) com %d PR(s) ainda aberto(s)"
+            detalhe = ("tarefa em '%s' (status de concluída) com %d PR(s) ainda aberto(s)"
                        % (status_wp, len(prs_do_grupo)))
         elif prod_sem_pr:
             pendencia = SEM_PROD
-            detalhe = "tipo '%s' exige producao e la esta '%s'" % (tipo, texto_prod)
+            detalhe = "tipo '%s' exige produção e lá está '%s'" % (tipo, texto_prod)
         elif outras_sem_pr:
             pendencia = SEM_VERSAO
             detalhe = "falta em %s" % ", ".join(
                 "%s (%s)" % (l["nome"], l["situacao"]) for l in outras_sem_pr)
         elif prs_em_versao:
             pendencia = APROVAR
-            detalhe = "%s (ha %d dias)" % (
+            detalhe = "%s (há %d dias)" % (
                 ", ".join("%s: %s" % (l["nome"], l["situacao"]) for l in prs_em_versao),
                 idade_versao)
         elif concluida and not prs_do_grupo and not build:
             pendencia = SEM_BUILD
-            detalhe = "tarefa concluida e sem o campo de build preenchido"
+            detalhe = "tarefa concluída e sem o campo de build preenchido"
         elif idade >= dias_parado:
             pendencia = PARADO
-            detalhe = "sem atualizacao ha %d dias" % idade
+            detalhe = "sem atualização há %d dias" % idade
         else:
             pendencia = OK
             detalhe = ""
@@ -386,7 +386,7 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             "pendencia": pendencia,
             "detalhe": detalhe,
             "prs": prs_do_grupo,
-            # links por coluna, para o clique na celula abrir no navegador
+            # links por coluna, para o clique na célula abrir no navegador
             "urls": {
                 "principal": lado_principal["urls"] if lado_principal else [],
                 "producao": lado_prod["urls"] if lado_prod else [],
@@ -395,8 +395,8 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             },
         })
 
-    # tarefas sem PR aberto (vieram da query salva) so entram se apontarem pendencia:
-    # concluidas e sem build preenchido - o "ja foi feito e o X5 ficou vazio"
+    # tarefas sem PR aberto (vieram da query salva) só entram se apontarem pendência:
+    # concluídas e sem build preenchido - o "já foi feito e o X5 ficou vazio"
     for numero, dados in tarefas.items():
         if numero in grupos:
             continue
@@ -430,7 +430,7 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             "pr_outros": "",
             "autores": [], "idade": 0,
             "pendencia": SEM_BUILD,
-            "detalhe": "tarefa concluida e sem o campo de build preenchido",
+            "detalhe": "tarefa concluída e sem o campo de build preenchido",
             "prs": [],
             "urls": {"principal": [], "producao": [], "homologacao": [], "outros": []},
         })
@@ -441,8 +441,8 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
 
 # ---------------------------------------------------------------- formato longo
 
-COLUNAS_LONGO = ("TAREFA", "TIPO", "STATUS", "BRANCH", "OBRIGATORIA", "SITUACAO",
-                 "PENDENTE", "PENDENCIA", "ENTREGA AO CLIENTE", "RAMOS", "ASSUNTO")
+COLUNAS_LONGO = ("TAREFA", "TIPO", "STATUS", "BRANCH", "OBRIGATÓRIA", "SITUAÇÃO",
+                 "PENDENTE", "PENDÊNCIA", "ENTREGA AO CLIENTE", "RAMOS", "ASSUNTO")
 
 
 def linhas_por_branch(linhas):
@@ -452,9 +452,9 @@ def linhas_por_branch(linhas):
         for lado in linha["branches"]:
             saida.append([
                 linha["tarefa"], linha["tipo"], linha["status_wp"], lado["nome"],
-                "sim" if lado["obrigatoria"] else "nao", lado["situacao"],
-                "sim" if lado["pendente"] else "nao", linha["pendencia"],
-                ("sim" if linha["entrega"] else "nao") if linha.get("tem_entrega") else "-",
+                "sim" if lado["obrigatoria"] else "não", lado["situacao"],
+                "sim" if lado["pendente"] else "não", linha["pendencia"],
+                ("sim" if linha["entrega"] else "não") if linha.get("tem_entrega") else "-",
                 linha["ramos"] or "-", linha["assunto"],
             ])
     return saida
