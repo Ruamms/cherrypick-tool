@@ -88,6 +88,7 @@ class OpenProject(object):
             raise StepError("Cole o token de API (Minha conta -> Tokens de acesso).")
         self.base = base_url.rstrip("/")
         self._token = token
+        self._schemas = {}
 
     def __repr__(self):
         # nunca exibir o token, nem em traceback
@@ -141,6 +142,40 @@ class OpenProject(object):
         dados = self._get("/api/v3/queries/%s" % query_id)
         resultados = dados.get("_embedded", {}).get("results", {})
         return resultados.get("_embedded", {}).get("elements", [])
+
+    def _paginar(self, caminho, filtros, maximo_paginas=25):
+        """Percorre uma coleção paginada da API v3 (offset = número da página).
+
+        Devolve (elementos, truncou) - truncou avisa que o teto de páginas veio
+        antes do fim, para o log poder dizer que a lista não está completa.
+        """
+        achados, pagina = [], 1
+        while pagina <= maximo_paginas:
+            consulta = urllib.parse.urlencode({
+                "filters": filtros, "pageSize": "100", "offset": str(pagina),
+            })
+            dados = self._get("%s?%s" % (caminho, consulta))
+            lote = dados.get("_embedded", {}).get("elements", [])
+            achados.extend(lote)
+            if not lote or len(achados) >= dados.get("total", 0):
+                return achados, False
+            pagina += 1
+        return achados, True
+
+    def work_packages_do_projeto(self, projeto, dias=180, maximo_paginas=25):
+        """Tarefas do projeto, de QUALQUER status, mexidas nos últimos <dias>.
+
+        Sem filtro explícito a API devolve só as abertas - e o caso que interessa
+        aqui é exatamente a tarefa já fechada, cujo PR foi mergeado e apagado.
+        Se a instância recusar o filtro de data, cai para 'sem filtro' (que
+        também traz as fechadas) em vez de falhar a carga inteira.
+        """
+        caminho = "/api/v3/projects/%s/work_packages" % urllib.parse.quote(str(projeto))
+        janela = json.dumps([{"updatedAt": {"operator": ">t-", "values": [str(int(dias))]}}])
+        try:
+            return self._paginar(caminho, janela, maximo_paginas)
+        except StepError:
+            return self._paginar(caminho, "[]", maximo_paginas)
 
     def work_packages_por_id(self, ids, tamanho_lote=100):
         """Busca work packages por uma lista de números, em lotes.
@@ -198,22 +233,52 @@ class OpenProject(object):
         return textos
 
     def nomes_de_campos(self, wp):
-        """Mapa {chave customFieldN: nome legível}, lido do schema do work package."""
+        """Mapa {chave customFieldN: nome legível}, lido do schema do work package.
+
+        `customField42` é local ao schema (projeto + tipo): o campo 42 de um
+        projeto pode ser outro campo em outro. Ler o schema de UMA tarefa e
+        aplicar em todas troca o nome das demais, e o campo procurado pelo nome
+        simplesmente não é achado. O cache é por href de schema, então continua
+        sendo uma requisição por tipo/projeto, não por tarefa.
+        """
         href = ((wp.get("_links") or {}).get("schema") or {}).get("href")
         if not href:
             return {}
-        try:
-            esquema = self._get(href)
-        except StepError:
-            return {}
-        nomes = {}
-        for chave, valor in esquema.items():
-            if chave.startswith("customField") and isinstance(valor, dict):
-                nomes[chave] = valor.get("name", chave)
-        return nomes
+        if href not in self._schemas:
+            try:
+                esquema = self._get(href)
+            except StepError:
+                self._schemas[href] = {}
+                return {}
+            self._schemas[href] = {
+                chave: valor.get("name", chave)
+                for chave, valor in esquema.items()
+                if chave.startswith("customField") and isinstance(valor, dict)
+            }
+        return self._schemas[href]
 
 
 # ---------------------------------------------------------------- extração
+
+RE_PROJETO = re.compile(r"/projects/([^/?#]+)", re.I)
+
+
+def separar_projeto(url):
+    """Separa a URL da instância do identificador do projeto, se houver.
+
+    A pessoa cola o que está na barra de endereços. Com projeto na URL a
+    ferramenta passa a olhar as tarefas DO PROJETO, e não só as que têm PR
+    aberto; sem projeto, o comportamento é o de antes.
+
+        https://op.empresa.com.br            -> ('https://op.empresa.com.br', '')
+        https://op.empresa.com.br/projects/x -> ('https://op.empresa.com.br', 'x')
+    """
+    url = (url or "").strip().rstrip("/")
+    achado = RE_PROJETO.search(url)
+    if not achado:
+        return url, ""
+    return url[:achado.start()].rstrip("/"), achado.group(1)
+
 
 RE_PR = re.compile(r"github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)", re.I)
 

@@ -306,6 +306,159 @@ def save_state(data):
         pass
 
 
+# ---------------------------------------------------------------- tema
+
+# Uma cor por papel, num lugar so: as duas janelas leem daqui, e trocar de tema
+# e trocar estes valores.
+TEMA = {
+    "fundo": "#1e1f22",
+    "fundo_campo": "#2b2d31",
+    "fundo_alt": "#26282c",
+    "texto": "#dcdde1",
+    "texto_fraco": "#a8adb5",
+    "dica": "#7f858d",
+    "erro": "#ff6b6b",
+    "ok": "#5ec269",
+    "destaque": "#6fa8ff",
+    "borda": "#3a3d42",
+    "selecao": "#3d5a80",
+}
+
+
+def aplicar_tema(root):
+    """Pinta a janela de escuro. Devolve o dicionário de cores.
+
+    Tem de rodar ANTES de criar os widgets: o tk clássico lê o banco de opções
+    no momento em que cada widget nasce, e o que já existe não é repintado.
+    """
+    import tkinter as tk
+    from tkinter import ttk
+
+    t = TEMA
+    root.configure(bg=t["fundo"])
+    opcoes = (
+        ("*background", t["fundo"]),
+        ("*foreground", t["texto"]),
+        ("*highlightBackground", t["fundo"]),
+        ("*highlightColor", t["borda"]),
+        ("*Button.background", t["fundo_campo"]),
+        ("*Button.activeBackground", t["selecao"]),
+        ("*Button.activeForeground", t["texto"]),
+        ("*Button.disabledForeground", t["dica"]),
+        ("*Entry.background", t["fundo_campo"]),
+        ("*Entry.foreground", t["texto"]),
+        ("*Entry.insertBackground", t["texto"]),
+        ("*Entry.readonlyBackground", t["fundo_alt"]),
+        ("*Entry.disabledBackground", t["fundo_alt"]),
+        ("*Entry.disabledForeground", t["dica"]),
+        ("*Entry.selectBackground", t["selecao"]),
+        ("*Checkbutton.activeBackground", t["fundo"]),
+        ("*Checkbutton.activeForeground", t["texto"]),
+        ("*Checkbutton.selectColor", t["fundo_campo"]),
+        ("*Text.background", t["fundo_campo"]),
+        ("*Text.foreground", t["texto"]),
+        ("*Text.insertBackground", t["texto"]),
+        ("*Text.selectBackground", t["selecao"]),
+        ("*Scrollbar.background", t["fundo_alt"]),
+        ("*Scrollbar.troughColor", t["fundo"]),
+        ("*Scrollbar.activeBackground", t["selecao"]),
+        # a lista que abre no combobox e um Listbox tk, fora do ttk
+        ("*TCombobox*Listbox.background", t["fundo_campo"]),
+        ("*TCombobox*Listbox.foreground", t["texto"]),
+        ("*TCombobox*Listbox.selectBackground", t["selecao"]),
+        ("*TCombobox*Listbox.selectForeground", t["texto"]),
+    )
+    for padrao, valor in opcoes:
+        root.option_add(padrao, valor)
+
+    estilo = ttk.Style(root)
+    # o tema nativo do Windows desenha por bitmap e ignora cor de fundo; o clam
+    # aceita. Sem esta linha a grade continua branca.
+    try:
+        estilo.theme_use("clam")
+    except tk.TclError:
+        pass
+    estilo.configure(".", background=t["fundo"], foreground=t["texto"],
+                     fieldbackground=t["fundo_campo"], bordercolor=t["borda"],
+                     lightcolor=t["fundo_alt"], darkcolor=t["fundo_alt"],
+                     troughcolor=t["fundo"], focuscolor=t["destaque"])
+    estilo.configure("TNotebook", background=t["fundo"], borderwidth=0)
+    estilo.configure("TNotebook.Tab", background=t["fundo_alt"],
+                     foreground=t["texto_fraco"], padding=(14, 6), borderwidth=0)
+    estilo.map("TNotebook.Tab",
+               background=[("selected", t["fundo_campo"])],
+               foreground=[("selected", t["texto"])])
+    estilo.configure("Treeview", background=t["fundo_campo"], foreground=t["texto"],
+                     fieldbackground=t["fundo_campo"], borderwidth=0, rowheight=20)
+    estilo.configure("Treeview.Heading", background=t["fundo_alt"], foreground=t["texto"],
+                     relief="flat", borderwidth=1)
+    estilo.map("Treeview.Heading", background=[("active", t["selecao"])])
+    estilo.map("Treeview", background=[("selected", t["selecao"])],
+               foreground=[("selected", "#ffffff")])
+    estilo.configure("TCombobox", fieldbackground=t["fundo_campo"],
+                     background=t["fundo_campo"], foreground=t["texto"],
+                     arrowcolor=t["texto"], selectbackground=t["fundo_campo"],
+                     selectforeground=t["texto"])
+    estilo.map("TCombobox",
+               fieldbackground=[("readonly", t["fundo_campo"])],
+               foreground=[("readonly", t["texto"])],
+               arrowcolor=[("disabled", t["dica"])])
+    estilo.configure("TScrollbar", background=t["fundo_alt"], troughcolor=t["fundo"],
+                     arrowcolor=t["texto_fraco"], bordercolor=t["borda"])
+    estilo.configure("TFrame", background=t["fundo"])
+    estilo.configure("TLabel", background=t["fundo"], foreground=t["texto"])
+    return t
+
+
+def criar_balao(widget, resolver, tema, atraso=350):
+    """Balão de ajuda que aparece ao parar o mouse sobre o widget.
+
+    resolver(evento) -> o texto daquele ponto, ou '' para não mostrar nada. É o
+    que permite tirar a legenda da tela: a explicação passa a morar na célula,
+    em vez de um bloco fixo ocupando um pedaço da janela.
+    """
+    import tkinter as tk
+
+    estado = {"janela": None, "tarefa": None, "texto": ""}
+
+    def esconder(_evento=None):
+        if estado["tarefa"]:
+            widget.after_cancel(estado["tarefa"])
+            estado["tarefa"] = None
+        if estado["janela"]:
+            estado["janela"].destroy()
+            estado["janela"] = None
+        estado["texto"] = ""
+
+    def mostrar(texto, x, y):
+        if estado["janela"]:
+            estado["janela"].destroy()
+        janela = tk.Toplevel(widget)
+        janela.overrideredirect(True)      # sem borda e fora da ordem de janelas
+        janela.attributes("-topmost", True)
+        tk.Label(janela, text=texto, justify="left", background=tema["fundo_alt"],
+                 foreground=tema["texto"], relief="solid", borderwidth=1,
+                 wraplength=560, padx=8, pady=5).pack()
+        janela.geometry("+%d+%d" % (x + 16, y + 20))
+        estado["janela"] = janela
+        estado["texto"] = texto
+
+    def mover(evento):
+        texto = resolver(evento) or ""
+        if texto and texto == estado["texto"]:
+            return                        # mesma célula: deixa o balão quieto
+        esconder()
+        if not texto:
+            return
+        x, y = evento.x_root, evento.y_root
+        estado["tarefa"] = widget.after(atraso, lambda: mostrar(texto, x, y))
+
+    widget.bind("<Motion>", mover, add="+")
+    widget.bind("<Leave>", esconder, add="+")
+    widget.bind("<Button-1>", esconder, add="+")
+    return esconder
+
+
 # ---------------------------------------------------------------- GUI
 
 def main():
@@ -316,6 +469,7 @@ def main():
     root.title("Cherry-pick + Push")
     root.geometry("880x620")
     root.minsize(760, 520)
+    tema = aplicar_tema(root)
 
     state = load_state()
     log_queue = queue.Queue()
@@ -347,7 +501,7 @@ def main():
     commits_txt = tk.Text(frm, height=4, wrap="none")
     commits_txt.grid(row=2, column=1, sticky="ew", pady=3)
     commits_txt.insert("1.0", state.get("commits", ""))
-    tk.Label(frm, text="(um por linha,\nna ordem de aplicação)", justify="left", fg="#666").grid(
+    tk.Label(frm, text="(um por linha,\nna ordem de aplicação)", justify="left", fg=tema["dica"]).grid(
         row=2, column=2, sticky="nw", padx=(6, 0)
     )
 
@@ -373,7 +527,7 @@ def main():
     out.grid(row=6, column=0, columnspan=3, sticky="nsew")
     frm.rowconfigure(6, weight=1)
 
-    status = tk.Label(frm, text="Pronto.", anchor="w", fg="#333")
+    status = tk.Label(frm, text="Pronto.", anchor="w", fg=tema["texto"])
     status.grid(row=7, column=0, columnspan=3, sticky="ew", pady=(6, 0))
 
     def set_busy(busy):
@@ -398,22 +552,22 @@ def main():
 
     def in_thread(fn, done_msg):
         set_busy(True)
-        status.config(text="Executando...", fg="#333")
+        status.config(text="Executando...", fg=tema["texto"])
 
         def worker():
             try:
                 fn()
-                root.after(0, lambda: status.config(text=done_msg, fg="#0a0"))
+                root.after(0, lambda: status.config(text=done_msg, fg=tema["ok"]))
             except StepError as exc:
                 prepared["ok"] = False
                 log("")
                 log("ERRO: %s" % exc)
-                root.after(0, lambda: status.config(text=str(exc), fg="#c00"))
+                root.after(0, lambda: status.config(text=str(exc), fg=tema["erro"]))
             except Exception as exc:  # falha inesperada: mostra e não mascara
                 prepared["ok"] = False
                 log("")
                 log("ERRO inesperado: %r" % (exc,))
-                root.after(0, lambda: status.config(text="Erro inesperado: %r" % (exc,), fg="#c00"))
+                root.after(0, lambda: status.config(text="Erro inesperado: %r" % (exc,), fg=tema["erro"]))
             finally:
                 root.after(0, lambda: set_busy(False))
 

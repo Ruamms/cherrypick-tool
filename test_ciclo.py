@@ -343,6 +343,118 @@ class TestMultiplasBranches(unittest.TestCase):
         self.assertEqual(linha["obrigatorias"], [MAIN, PROD, HOMO])
 
 
+class TestUrlDoProjeto(unittest.TestCase):
+    def test_separa_instancia_e_projeto(self):
+        import openproject
+        casos = {
+            "https://op.empresa.com.br/": ("https://op.empresa.com.br", ""),
+            "https://op.empresa.com.br": ("https://op.empresa.com.br", ""),
+            "https://op.empresa.com.br/projects/meu-time":
+                ("https://op.empresa.com.br", "meu-time"),
+            "https://op.empresa.com.br/projects/meu-time/work_packages?query_id=42":
+                ("https://op.empresa.com.br", "meu-time"),
+            "https://op.empresa.com.br/projects/123": ("https://op.empresa.com.br", "123"),
+            "": ("", ""),
+        }
+        for url, esperado in casos.items():
+            self.assertEqual(openproject.separar_projeto(url), esperado, url)
+
+
+class TestSemPrAberto(unittest.TestCase):
+    """O caso que motivou tudo: PR para a master mergeado e apagado. Sem PR
+    aberto, o radar de PR não vê nada - quem responde é o histórico do git."""
+
+    def montar(self, tarefas, historico, exigir_pr, ignoradas=None):
+        return ciclo.montar(
+            [], tarefas, PROD, MAIN, ["Corretiva", "Divida Tecnica"], [],
+            dias_parado=7, hoje=HOJE, historico=historico, base_homologacao=HOMO,
+            exigir_pr=exigir_pr, ignoradas=ignoradas)
+
+    def test_corretiva_na_master_e_faltando_nas_duas_versoes(self):
+        linhas = self.montar(
+            {"108692": tarefa("Corretiva", build="Banco: 2.2602.0.67")},
+            {MAIN: {"108692"}, PROD: set(), HOMO: set()}, exigir_pr=False)
+        linha = uma(linhas, "108692")
+        self.assertEqual(linha["pendencia"], ciclo.SEM_PROD)
+        self.assertEqual(situacao(linha, MAIN), ciclo.MERGEADO)
+        self.assertEqual(situacao(linha, PROD), ciclo.SEM_PR)
+        self.assertEqual(situacao(linha, HOMO), ciclo.SEM_PR)
+        self.assertIn("v2.2601: PR não aberto", linha["pendente_em"])
+        self.assertIn("v2.2602: PR não aberto", linha["pendente_em"])
+
+    def test_o_modo_antigo_nao_veria_essa_tarefa(self):
+        """Mesmos dados, exigir_pr=True: é o comportamento de antes."""
+        linhas = self.montar(
+            {"108692": tarefa("Corretiva", build="Banco: 2.2602.0.67")},
+            {MAIN: {"108692"}, PROD: set(), HOMO: set()}, exigir_pr=True)
+        self.assertEqual(linhas, [])
+
+    def test_entrega_ao_cliente_sem_pr_aberto(self):
+        linhas = self.montar(
+            {"109866": tarefa("Adaptativa", entrega=True, ramos="2602",
+                              build="Finanças: 2.2601.9")},
+            {MAIN: {"109866"}, PROD: set(), HOMO: set()}, exigir_pr=False)
+        linha = uma(linhas, "109866")
+        self.assertEqual(linha["pendencia"], ciclo.SEM_VERSAO)
+        self.assertEqual(linha["pendente_em"], "v2.2602: PR não aberto")
+        self.assertEqual(situacao(linha, PROD), ciclo.NAO_SOLICITADO)
+
+    def test_ja_esta_em_todas_as_obrigatorias_nao_aparece(self):
+        linhas = self.montar(
+            {"108692": tarefa("Corretiva", build="Banco: 2.2602.0.67")},
+            {MAIN: {"108692"}, PROD: {"108692"}, HOMO: {"108692"}}, exigir_pr=False)
+        self.assertEqual(linhas, [])
+
+    def test_nem_na_master_esta_e_trabalho_nao_entregue(self):
+        """Falta em tudo: não é backport atrasado, é tarefa que não terminou.
+        Fica fora da lista, mas contada - sem corte silencioso."""
+        ignoradas = {}
+        linhas = self.montar(
+            {"108692": tarefa("Corretiva", build="Banco: 2.2602.0.67")},
+            {MAIN: set(), PROD: set(), HOMO: set()}, exigir_pr=False,
+            ignoradas=ignoradas)
+        self.assertEqual(linhas, [])
+        self.assertEqual(ignoradas["nao_entregues"], 1)
+
+    def test_build_vazio_continua_valendo_no_modo_projeto(self):
+        linhas = self.montar(
+            {"104328": tarefa("Adaptativa", fechado=True)},
+            {MAIN: {"104328"}, PROD: set(), HOMO: set()}, exigir_pr=False)
+        self.assertEqual(uma(linhas, "104328")["pendencia"], ciclo.SEM_BUILD)
+
+    def test_pr_aberto_de_outra_tarefa_nao_interfere(self):
+        linhas = ciclo.montar(
+            [pr(8006, MAIN, "108000")],
+            {"108000": tarefa("Corretiva"), "108692": tarefa("Corretiva")},
+            PROD, MAIN, ["Corretiva"], [], hoje=HOJE, base_homologacao=HOMO,
+            historico={MAIN: {"108692"}, PROD: set(), HOMO: set()},
+            exigir_pr=False)
+        self.assertEqual(uma(linhas, "108692")["pendencia"], ciclo.SEM_PROD)
+        self.assertEqual(uma(linhas, "108000")["pendencia"], ciclo.SEM_PROD)
+
+
+class TestExplicacoes(unittest.TestCase):
+    """O balão da grade lê estas funções: a legenda saiu da tela e virou hover."""
+
+    def test_explica_a_frase_mesmo_com_pr_e_dias_colados(self):
+        self.assertIn("ninguém encostou",
+                      ciclo.explicar_situacao("aguardando aprovação (19d) #8030"))
+        self.assertIn("histórico", ciclo.explicar_situacao(ciclo.MERGEADO))
+        self.assertIn("não é obrigatória", ciclo.explicar_situacao(ciclo.NAO_SOLICITADO))
+        self.assertEqual(ciclo.explicar_situacao(""), "")
+
+    def test_toda_situacao_tem_explicacao(self):
+        frases = (ciclo.MERGEADO, ciclo.APROVADO, ciclo.AJUSTES, ciclo.AGUARDANDO,
+                  ciclo.COMENTADO, ciclo.RASCUNHO, ciclo.SEM_PR, ciclo.NAO_CONFERIDO,
+                  ciclo.NAO_SOLICITADO)
+        for frase in frases:
+            self.assertTrue(ciclo.explicar_situacao(frase), frase)
+
+    def test_toda_pendencia_tem_explicacao(self):
+        for pendencia in ciclo.ORDEM_CICLO:
+            self.assertTrue(ciclo.explicar_pendencia(pendencia), pendencia)
+
+
 class TestFormatoLongo(unittest.TestCase):
     def test_uma_linha_por_tarefa_e_branch(self):
         linhas = ciclo.montar(

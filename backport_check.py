@@ -46,17 +46,12 @@ PORTADO = "PORTADO"
 
 ORDEM = {PENDENTE: 0, BRANCH: 1, PROVAVEL: 2}
 
-CORES = {PENDENTE: "#b00000", BRANCH: "#b06000", PROVAVEL: "#707070"}
+CORES = {PENDENTE: "#ff6b6b", BRANCH: "#ffa657", PROVAVEL: "#9aa0a6"}
 
 LEGENDA = (
     (PENDENTE, "nenhum sinal de backport - é o que quebra cliente"),
     (BRANCH, "a branch de backport existe no origin, mas nada chegou na produção (PR não mergeado)"),
     (PROVAVEL, "a OP já aparece na produção com outro assunto - confira antes de descartar"),
-)
-
-RODAPE_LEGENDA = (
-    "Já portado (patch-id equivalente ou assunto igual) não entra na lista.  |  "
-    "Coluna CONFLITO: simulação do cherry-pick sobre a produção, sem alterar nada no seu repo."
 )
 
 TODOS = "(todos)"
@@ -385,12 +380,15 @@ def main():
     import webbrowser
     from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
-    from cherrypick_tool import pr_compare_url, remote_web_url
+    from cherrypick_tool import (
+        aplicar_tema, criar_balao, pr_compare_url, remote_web_url,
+    )
 
     root = tk.Tk()
     root.title("BackportCheck - o que falta na produção")
     root.geometry("1300x960")
     root.minsize(1000, 760)
+    tema = aplicar_tema(root)
 
     state = load_state()
     log_queue = queue.Queue()
@@ -407,7 +405,7 @@ def main():
         É um rótulo posicionado sobre o Entry, não um texto colocado na variável:
         assim o valor lido nunca pode ser o exemplo por acidente.
         """
-        rotulo = tk.Label(entry, text=texto, fg="#9a9a9a", anchor="w",
+        rotulo = tk.Label(entry, text=texto, fg=tema["dica"], anchor="w",
                           bg=entry.cget("background"))
         rotulo.bind("<Button-1>", lambda _e: entry.focus_set())
 
@@ -485,7 +483,7 @@ def main():
     autor_combo = ttk.Combobox(topo, textvariable=autor_var, width=26, state="readonly")
     autor_combo["values"] = [TODOS] + ([state["autor"]] if state.get("autor") else [])
     autor_combo.grid(row=2, column=1, sticky="w", pady=2)
-    tk.Label(topo, text="(preenchido pela análise)", fg="#666").grid(
+    tk.Label(topo, text="(preenchido pela análise)", fg=tema["texto_fraco"]).grid(
         row=2, column=2, sticky="e", padx=(12, 6)
     )
 
@@ -504,20 +502,14 @@ def main():
     tk.Label(
         btns,
         text="(selecione várias linhas para levar tudo na mesma branch)",
-        fg="#666",
+        fg=tema["texto_fraco"],
     ).pack(side="left", padx=10)
 
-    legenda = tk.Frame(aba_git, padx=10, pady=6)
+    legenda = tk.Frame(aba_git, padx=10, pady=4)
     legenda.pack(fill="x")
-    tk.Label(legenda, text="Legenda:", fg="#333").grid(row=0, column=0, sticky="nw")
-    for i, (situacao, texto) in enumerate(LEGENDA):
-        tk.Label(
-            legenda, text=situacao, fg=CORES[situacao], font=("TkDefaultFont", 9, "bold")
-        ).grid(row=i, column=1, sticky="w", padx=(8, 6))
-        tk.Label(legenda, text="= " + texto, fg="#444").grid(row=i, column=2, sticky="w")
-    tk.Label(legenda, text=RODAPE_LEGENDA, fg="#777").grid(
-        row=len(LEGENDA), column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(2, 0)
-    )
+    tk.Label(legenda, fg=tema["dica"], text=(
+        "Pare o mouse numa célula (ou no cabeçalho) para ver o que ela diz."
+    )).pack(side="left")
 
     corpo = tk.Frame(aba_git, padx=10, pady=8)
     corpo.pack(fill="both", expand=True)
@@ -536,10 +528,59 @@ def main():
     for situacao, cor in CORES.items():
         grid.tag_configure(situacao, foreground=cor)
 
+    AJUDA_GIT = {
+        "status": "Situação do commit em relação à produção. Pare o mouse na célula.\n"
+                  "O que já foi portado (patch-id equivalente ou assunto igual) não entra "
+                  "na lista.",
+        "conflito": "Cherry-pick simulado sobre a produção, em memória: nada é alterado no "
+                    "seu repo.",
+        "data": "Data do commit na branch principal.",
+        "autor": "Quem fez o commit.",
+        "op": "Número da tarefa achado no assunto do commit.",
+        "pr": "Número do PR que trouxe o commit (do '(#1234)' do squash merge).",
+        "assunto": "Assunto do commit. Duplo clique abre o PR de origem.",
+    }
+    COLUNAS_GIT = {"#%d" % (i + 1): nome for i, nome in enumerate(colunas)}
+    EXPLICACAO_CONFLITO = {
+        LIMPO: "aplica sem conflito - dá para portar agora",
+        NAO_CHECADO: "ainda checando",
+        SEM_INFO: "não deu para simular (commit raiz, ou git anterior ao 2.38)",
+        CONFLITO: "vai parar para você resolver na mão",
+    }
+
+    def balao_git(evento):
+        regiao = grid.identify_region(evento.x, evento.y)
+        coluna = COLUNAS_GIT.get(grid.identify_column(evento.x))
+        if not coluna:
+            return ""
+        if regiao == "heading":
+            return AJUDA_GIT.get(coluna, "")
+        if regiao != "cell":
+            return ""
+        item = grid.identify_row(evento.y)
+        try:
+            linha = dados[int(item)]
+        except (ValueError, IndexError, TypeError):
+            return ""
+        if coluna == "status":
+            texto = dict(LEGENDA).get(linha["status"], "")
+            return "%s: %s%s" % (linha["status"], texto,
+                                 "\n" + linha["detalhe"] if linha["detalhe"] else "")
+        if coluna == "conflito":
+            explicacao = EXPLICACAO_CONFLITO.get(linha["conflito"], "")
+            if linha["conflito"] == CONFLITO and linha["arquivos"]:
+                return "%s\n%s" % (explicacao, "\n".join("  " + a for a in linha["arquivos"][:12]))
+            return explicacao
+        if coluna == "assunto":
+            return linha["assunto"]
+        return AJUDA_GIT.get(coluna, "")
+
+    criar_balao(grid, balao_git, tema)
+
     out = scrolledtext.ScrolledText(root, height=9, wrap="none", state="disabled")
     out.pack(fill="both", expand=False, padx=10)
 
-    status = tk.Label(root, text="Preencha e clique em Analisar.", anchor="w", fg="#333", padx=10)
+    status = tk.Label(root, text="Preencha e clique em Analisar.", anchor="w", fg=tema["texto"], padx=10)
     status.pack(fill="x", pady=(4, 8))
 
     def set_busy(busy):
@@ -562,22 +603,22 @@ def main():
 
     def in_thread(fn, msg_ok, depois=None):
         set_busy(True)
-        status.config(text="Executando...", fg="#333")
+        status.config(text="Executando...", fg=tema["texto"])
 
         def worker():
             try:
                 fn()
-                root.after(0, lambda: status.config(text=msg_ok, fg="#0a0"))
+                root.after(0, lambda: status.config(text=msg_ok, fg=tema["ok"]))
                 if depois:
                     root.after(0, depois)
             except StepError as exc:
                 log("")
                 log("ERRO: %s" % exc)
-                root.after(0, lambda: status.config(text=str(exc), fg="#c00"))
+                root.after(0, lambda: status.config(text=str(exc), fg=tema["erro"]))
             except Exception as exc:
                 log("")
                 log("ERRO inesperado: %r" % (exc,))
-                root.after(0, lambda: status.config(text="Erro inesperado: %r" % (exc,), fg="#c00"))
+                root.after(0, lambda: status.config(text="Erro inesperado: %r" % (exc,), fg=tema["erro"]))
             finally:
                 root.after(0, lambda: set_busy(False))
 
@@ -599,7 +640,7 @@ def main():
                 text="Conflita em: %s" % ", ".join(linha["arquivos"][:6]), fg=CORES[PENDENTE]
             )
         elif linha["detalhe"]:
-            status.config(text=linha["detalhe"], fg="#333")
+            status.config(text=linha["detalhe"], fg=tema["texto"])
 
     grid.bind("<<TreeviewSelect>>", on_select)
 
@@ -623,6 +664,7 @@ def main():
             "homologacao": homo_c_var.get().strip(),
             "entrega_filtro": entrega_var.get(),
             "versao_filtro": versao_var.get(),
+            "dias_tarefas": dias_tarefas_var.get().strip() or "180",
         })
         save_state(state)
 
@@ -662,7 +704,7 @@ def main():
             contagem.get(PENDENTE, 0), contagem.get(BRANCH, 0),
             contagem.get(PROVAVEL, 0), portados,
         )
-        status.config(text=resumo, fg="#333")
+        status.config(text=resumo, fg=tema["texto"])
         checar_conflitos()
         return resumo
 
@@ -722,7 +764,7 @@ def main():
         principal = main_var.get().strip()
         dias = (dias_var.get().strip() or "180")
         if not dias.isdigit():
-            status.config(text="Dias deve ser um número.", fg="#c00")
+            status.config(text="Dias deve ser um número.", fg=tema["erro"])
             return
         salvar()
 
@@ -783,7 +825,7 @@ def main():
             return
         web = remote_web_url(repo_var.get().strip())
         if not web:
-            status.config(text="Não foi possível identificar a url do origin.", fg="#c00")
+            status.config(text="Não foi possível identificar a url do origin.", fg=tema["erro"])
             return
         for m in marcadas[:5]:
             url = "%s/pull/%s" % (web, m["pr"]) if m["pr"] else "%s/commit/%s" % (web, m["sha"])
@@ -804,7 +846,7 @@ def main():
     import github_prs
     from openproject import (
         CAMPO_ENTREGA, CAMPO_RAMOS, PREFIXO_RAMOS, OpenProject, campo_por_nome,
-        desproteger, titulo_do_link,
+        desproteger, separar_projeto, titulo_do_link,
     )
 
     ciclo_cache = {"linhas": [], "tipos": [], "status": [], "fechados": [], "usuario": ""}
@@ -815,26 +857,57 @@ def main():
     topo_c.pack(fill="x")
     topo_c.columnconfigure(1, weight=1)
 
-    tk.Label(topo_c, text="Repositórios").grid(row=0, column=0, sticky="w", pady=2)
+    def rotulo(pai, texto, ajuda, **posicao):
+        """Rótulo de campo com a explicação no balão, em vez de num parágrafo fixo."""
+        alvo = tk.Label(pai, text=texto)
+        alvo.grid(**posicao)
+        if ajuda:
+            criar_balao(alvo, lambda _evento, t=ajuda: t, tema)
+        return alvo
+
+    rotulo(topo_c, "Repositórios",
+           "org/repo separados por vírgula, OU o caminho de um clone - nesse caso o org/repo\n"
+           "sai do remote origin. É do clone que sai a resposta 'o commit já está na branch?'.",
+           row=0, column=0, sticky="w", pady=2)
     repos_var = tk.StringVar(value=state.get("repos", ""))
     campo_repos = tk.Entry(topo_c, textvariable=repos_var)
     campo_repos.grid(row=0, column=1, columnspan=3, sticky="ew", pady=2)
     dica(campo_repos, repos_var, "minha-org/um-repo, minha-org/outro-repo")
-    tk.Label(topo_c, text="org/repo OU a pasta de um clone", fg="#666").grid(
+    tk.Label(topo_c, text="org/repo OU a pasta de um clone", fg=tema["texto_fraco"]).grid(
         row=0, column=4, sticky="w", padx=(6, 0))
 
-    tk.Label(topo_c, text="OpenProject").grid(row=1, column=0, sticky="w", pady=2)
+    rotulo(topo_c, "OpenProject",
+           "URL da instância. Cole a URL de um PROJETO (.../projects/meu-time) para conferir\n"
+           "TODAS as tarefas dele, e não só as que têm PR aberto - é assim que a tarefa cujo\n"
+           "PR foi mergeado e apagado continua sendo cobrada nas outras branches.",
+           row=1, column=0, sticky="w", pady=2)
     op_url_var = tk.StringVar(value=state.get("op_url", ""))
     campo_url = tk.Entry(topo_c, textvariable=op_url_var)
     campo_url.grid(row=1, column=1, sticky="ew", pady=2)
-    dica(campo_url, op_url_var, "https://openproject.suaempresa.com.br")
-    tk.Label(topo_c, text="Query salva (id)").grid(row=1, column=2, sticky="e", padx=(12, 6))
+    dica(campo_url, op_url_var, "https://openproject.suaempresa.com.br/projects/meu-time")
+    rotulo(topo_c, "Query salva (id)",
+           "Opcional: o número que aparece na URL do OpenProject como ?query_id=1234, a visão\n"
+           "já filtrada do seu time. Traz também tarefas sem PR aberto.",
+           row=1, column=2, sticky="e", padx=(12, 6))
     query_var = tk.StringVar(value=state.get("query", ""))
     campo_query = tk.Entry(topo_c, textvariable=query_var, width=10)
     campo_query.grid(row=1, column=3, sticky="w")
     dica(campo_query, query_var, "1234")
+    quadro_dias_t = tk.Frame(topo_c)
+    quadro_dias_t.grid(row=1, column=4, sticky="w", padx=(6, 0))
+    ajuda_dias_t = tk.Label(quadro_dias_t, text="Tarefas dos últimos")
+    ajuda_dias_t.pack(side="left")
+    criar_balao(ajuda_dias_t, lambda _e: (
+        "Janela de tarefas do PROJETO: só entram as mexidas nesse período.\n"
+        "Vale apenas quando a URL do OpenProject aponta para um projeto."), tema)
+    dias_tarefas_var = tk.StringVar(value=str(state.get("dias_tarefas", "180")))
+    tk.Entry(quadro_dias_t, textvariable=dias_tarefas_var, width=5).pack(side="left", padx=(6, 4))
+    tk.Label(quadro_dias_t, text="dias").pack(side="left")
 
-    tk.Label(topo_c, text="Token da API").grid(row=2, column=0, sticky="w", pady=2)
+    rotulo(topo_c, "Token da API",
+           "Token pessoal do OpenProject (Minha conta -> Tokens de acesso), NUNCA a sua senha.\n"
+           "Fica cifrado nesta máquina (DPAPI) e volta preenchido na próxima vez.",
+           row=2, column=0, sticky="w", pady=2)
     token_var = tk.StringVar(value=desproteger(state.get("token_cifrado", "")))
     campo_token = tk.Entry(topo_c, textvariable=token_var, show="")
     campo_token.grid(row=2, column=1, sticky="ew", pady=2)
@@ -847,9 +920,10 @@ def main():
     esconder_token()
 
     def abrir_pagina_token():
-        url = op_url_var.get().strip().rstrip("/")
+        # a URL pode apontar para um projeto; a pagina de token e da instancia
+        url, _projeto = separar_projeto(op_url_var.get())
         if not url:
-            status.config(text="Preencha a URL do OpenProject primeiro.", fg="#c00")
+            status.config(text="Preencha a URL do OpenProject primeiro.", fg=tema["erro"])
             return
         webbrowser.open(url + "/my/access_token", new=2)
 
@@ -861,22 +935,32 @@ def main():
     autor_c_combo = ttk.Combobox(topo_c, textvariable=autor_c_var, width=26, state="readonly")
     autor_c_combo["values"] = [TODOS] + ([state["autor_ciclo"]] if state.get("autor_ciclo") else [])
     autor_c_combo.grid(row=3, column=1, sticky="w", pady=2)
-    tk.Label(topo_c, text="Branch de produção").grid(row=3, column=2, sticky="e", padx=(12, 6))
+    rotulo(topo_c, "Branch de produção",
+           "A versão que está em produção hoje (ex.: v2.2601).",
+           row=3, column=2, sticky="e", padx=(12, 6))
     prod_c_var = tk.StringVar(value=state.get("producao_ciclo", "") or state.get("producao", ""))
     campo_prod_c = tk.Entry(topo_c, textvariable=prod_c_var, width=16)
     campo_prod_c.grid(row=3, column=3, sticky="w")
     dica(campo_prod_c, prod_c_var, "release-2601")
 
-    tk.Label(topo_c, text="Branch de homologação").grid(row=4, column=0, sticky="w", pady=2)
+    rotulo(topo_c, "Branch de homologação",
+           "A próxima versão (ex.: v2.2602). Vazio: a ferramenta trabalha com uma branch de\n"
+           "versão só, como antes.",
+           row=4, column=0, sticky="w", pady=2)
     homo_c_var = tk.StringVar(value=state.get("homologacao", ""))
     campo_homo_c = tk.Entry(topo_c, textvariable=homo_c_var, width=26)
     campo_homo_c.grid(row=4, column=1, sticky="w", pady=2)
     dica(campo_homo_c, homo_c_var, "release-2602 (vazio = não usa)")
 
-    tk.Label(topo_c, text="Parado após (dias)").grid(row=4, column=2, sticky="e", padx=(12, 6))
+    rotulo(topo_c, "Parado após (dias)",
+           "Dias sem NENHUMA atualização no PR para ele ser marcado como PARADO.",
+           row=4, column=2, sticky="e", padx=(12, 6))
     dias_parado_var = tk.StringVar(value=str(state.get("dias_parado", "7")))
     tk.Entry(topo_c, textvariable=dias_parado_var, width=5).grid(row=4, column=3, sticky="w")
-    tk.Label(topo_c, text="Conta do GitHub").grid(row=5, column=0, sticky="w", pady=2)
+    rotulo(topo_c, "Conta do GitHub",
+           "Qual credencial usar. 'automática pelo repositório' pergunta ao git usando o\n"
+           "org/repo - é o que resolve máquina com mais de uma conta.",
+           row=5, column=0, sticky="w", pady=2)
     contas = [github_prs.AUTOMATICA, github_prs.PADRAO_GIT] + [
         u for _alvo, u in github_prs.contas_guardadas()]
     conta_var = tk.StringVar(value=state.get("conta", github_prs.AUTOMATICA))
@@ -885,17 +969,9 @@ def main():
     conta_combo.grid(row=5, column=1, sticky="w", pady=2)
     if conta_var.get() not in contas:
         conta_var.set(github_prs.AUTOMATICA)
-    rotulo_conta = tk.Label(topo_c, text="", fg="#0a7a0a")
+    rotulo_conta = tk.Label(topo_c, text="", fg=tema["ok"])
     rotulo_conta.grid(row=5, column=2, columnspan=3, sticky="w", padx=(12, 0))
 
-    tk.Label(topo_c, fg="#666", justify="left", text=(
-        "Query salva: o número que aparece na URL do OpenProject como ?query_id=1234 - é a visão "
-        "já filtrada do seu time.   |   Parado após: dias sem nenhuma atualização no PR."
-    )).grid(row=6, column=0, columnspan=5, sticky="w", pady=(6, 0))
-    tk.Label(topo_c, fg="#666", justify="left", text=(
-        "O token é guardado cifrado nesta máquina (DPAPI) e volta preenchido na próxima vez. "
-        "Nunca use a sua senha: gere um token em Minha conta -> Tokens de acesso."
-    )).grid(row=7, column=0, columnspan=5, sticky="w")
 
     btns_c = tk.Frame(aba_ciclo, padx=10)
     btns_c.pack(fill="x")
@@ -925,32 +1001,9 @@ def main():
     versao_combo = ttk.Combobox(filtros_c, textvariable=versao_var, width=12, state="readonly",
                                 values=[TODAS])
     versao_combo.pack(side="left", padx=(6, 0))
-    tk.Label(filtros_c, fg="#666", text=(
-        "só tarefas que pedem aquela versão em 'ramos para disponibilização'"
+    tk.Label(filtros_c, fg=tema["dica"], text=(
+        "|   pare o mouse em cima de uma célula (ou do cabeçalho) para ver o que ela diz"
     )).pack(side="left", padx=(10, 0))
-
-    legenda_c = tk.Frame(aba_ciclo, padx=10, pady=6)
-    legenda_c.pack(fill="x")
-    tk.Label(legenda_c, text="Legenda:", fg="#333").grid(row=0, column=0, sticky="nw")
-    for i, (situacao, texto) in enumerate(mod_ciclo.LEGENDA_CICLO):
-        tk.Label(legenda_c, text=situacao, fg=mod_ciclo.CORES_CICLO[situacao],
-                 font=("TkDefaultFont", 9, "bold")).grid(row=i, column=1, sticky="w", padx=(8, 6))
-        tk.Label(legenda_c, text="= " + texto, fg="#444").grid(row=i, column=2, sticky="w")
-    tk.Label(legenda_c, fg="#0a4fb0", text=(
-        "Clique na célula de PR PRINCIPAL / PR PRODUÇÃO / PR HOMOLOGAÇÃO / PR OUTRAS "
-        "BRANCHES para abrir o PR no navegador."
-    )).grid(row=len(mod_ciclo.LEGENDA_CICLO), column=1, columnspan=2, sticky="w",
-            padx=(8, 0), pady=(2, 0))
-    tk.Label(legenda_c, fg="#777", text=(
-        "PENDENTE EM diz a branch e como está cada uma. 'não solicitado' = a tarefa não pediu "
-        "aquela versão, então a ausência ali não é pendência."
-    )).grid(row=len(mod_ciclo.LEGENDA_CICLO) + 1, column=1, columnspan=2, sticky="w",
-            padx=(8, 0))
-    tk.Label(legenda_c, fg="#777", text=(
-        "Só enxerga PR ABERTO: o que já foi mergeado sai do radar, e por isso a pendência diz "
-        "'sem PR aberto para produção', não 'não está na produção'."
-    )).grid(row=len(mod_ciclo.LEGENDA_CICLO) + 2, column=1, columnspan=2, sticky="w",
-            padx=(8, 0))
 
     corpo_c = tk.Frame(aba_ciclo, padx=10, pady=8)
     corpo_c.pack(fill="both", expand=True)
@@ -981,7 +1034,7 @@ def main():
         btn_abrir_wp.config(state="normal" if grid_c.selection() else "disabled")
         marcadas = selecionadas_c()
         if len(marcadas) == 1 and marcadas[0]["detalhe"]:
-            status.config(text=marcadas[0]["detalhe"], fg="#333")
+            status.config(text=marcadas[0]["detalhe"], fg=tema["texto"])
 
     grid_c.bind("<<TreeviewSelect>>", on_select_c)
 
@@ -1015,6 +1068,88 @@ def main():
     grid_c.bind("<Button-1>", clicar_celula, add="+")
     grid_c.bind("<Motion>", mover_no_grid)
     grid_c.bind("<Leave>", lambda _e: grid_c.config(cursor=""))
+
+    COLUNAS_NUM = {"#%d" % (i + 1): nome for i, nome in enumerate(colunas_c)}
+    # o que cada coluna quer dizer: aparece ao parar o mouse no cabeçalho
+    AJUDA_COLUNA = {
+        "pendencia": "O que fazer com essa tarefa. Pare o mouse na célula para a explicação.",
+        "pendente_em": "Em qual branch a tarefa ainda falta, e como está cada uma.",
+        "tarefa": "Número da tarefa no OpenProject. Duplo clique abre a tarefa e os PRs.",
+        "tipo": "Tipo da tarefa. Vem do gerenciador; sem tarefa lá, é deduzido do título do PR.",
+        "status": "Status da tarefa no gerenciador.",
+        "entrega": "Campo 'Confirmar entrega ao cliente?' da tarefa.",
+        "ramos": "Versões lidas do campo 'ramos para disponibilização' - a interpretação da "
+                 "ferramenta, dá para conferir.",
+        "principal": "Situação da branch principal. Clique para abrir o PR.",
+        "producao": "Situação da branch de produção. Clique para abrir o PR.",
+        "homologacao": "Situação da branch de homologação. Clique para abrir o PR.",
+        "outros": "PRs abertos para branches que não são nenhuma das três. Clique para abrir.",
+        "build": "Campo de build (X5) da tarefa.",
+        "dias": "Dias desde a última atualização do PR mais recente da tarefa.",
+        "assunto": "Assunto da tarefa no gerenciador, ou o título do PR quando não há tarefa.",
+    }
+
+    def texto_do_balao(evento):
+        regiao = grid_c.identify_region(evento.x, evento.y)
+        coluna = COLUNAS_NUM.get(grid_c.identify_column(evento.x))
+        if not coluna:
+            return ""
+        if regiao == "heading":
+            return AJUDA_COLUNA.get(coluna, "")
+        if regiao != "cell":
+            return ""
+        item = grid_c.identify_row(evento.y)
+        try:
+            linha = ciclo_dados[int(item)]
+        except (ValueError, IndexError, TypeError):
+            return ""
+        if coluna == "pendencia":
+            partes = ["%s: %s" % (linha["pendencia"],
+                                  mod_ciclo.explicar_pendencia(linha["pendencia"]))]
+            if linha["detalhe"]:
+                partes.append("Nesta tarefa: " + linha["detalhe"])
+            return "\n".join(partes)
+        if coluna == "pendente_em":
+            if not linha["pendente_em"]:
+                return "Nada pendente: a tarefa está em todas as branches obrigatórias."
+            return ("Falta em:\n  %s\n\nObrigatórias: %s"
+                    % ("\n  ".join(linha["pendente_em"].split(", ")),
+                       ", ".join(linha["obrigatorias"]) or "-"))
+        if coluna in ("principal", "producao", "homologacao"):
+            situacao = linha["pr_%s" % coluna]
+            if not situacao:
+                return "Branch não configurada."
+            explicacao = mod_ciclo.explicar_situacao(situacao)
+            fim = "\n\nClique para abrir o PR." if (linha["urls"] or {}).get(coluna) else ""
+            return "%s\n%s%s" % (situacao, explicacao, fim)
+        if coluna == "entrega":
+            if not linha.get("tem_entrega"):
+                return ("O campo 'Confirmar entrega ao cliente?' não veio nesta tarefa - "
+                        "confira o nome do campo no OpenProject.")
+            return ("Confirmar entrega ao cliente? = %s\n%s"
+                    % ("sim" if linha["entrega"] else "não",
+                       "as versões do campo de ramos são obrigatórias" if linha["entrega"]
+                       else "só a principal é obrigatória (e a produção, se o tipo exigir)"))
+        if coluna == "ramos":
+            if not linha["ramos"]:
+                return "A tarefa não pediu nenhuma versão."
+            return "No card: %s\nVersões lidas: %s" % (
+                linha["ramos"], ", ".join(linha["versoes"]) or "nenhuma")
+        if coluna == "tipo":
+            return "%s\n(veio do %s)" % (linha["tipo"], linha["origem_tipo"])
+        if coluna == "assunto":
+            return linha["assunto"]
+        if coluna == "outros" and linha["pr_outros"]:
+            return linha["pr_outros"] + "\n\nClique para abrir."
+        if coluna == "build":
+            return linha["build"] or "Campo de build vazio."
+        if coluna == "dias":
+            return "%d dia(s) desde a última atualização do PR." % linha["idade"]
+        if coluna == "tarefa":
+            return "Duplo clique abre a tarefa no OpenProject e os PRs dela."
+        return AJUDA_COLUNA.get(coluna, "")
+
+    criar_balao(grid_c, texto_do_balao, tema)
 
     def _num_pr(texto):
         numeros = re.findall(r"\d+", texto or "")
@@ -1086,7 +1221,7 @@ def main():
                       contagem.get(mod_ciclo.SEM_PROD, 0), contagem.get(mod_ciclo.SEM_VERSAO, 0),
                       contagem.get(mod_ciclo.APROVAR, 0),
                       contagem.get(mod_ciclo.SEM_BUILD, 0), contagem.get(mod_ciclo.PARADO, 0)))
-        status.config(text=resumo, fg="#333")
+        status.config(text=resumo, fg=tema["texto"])
         return resumo
 
     entrega_combo.bind("<<ComboboxSelected>>", lambda _e: render_ciclo())
@@ -1178,7 +1313,12 @@ def main():
         salvar()
         dias_p = dias_parado_var.get().strip() or "7"
         if not dias_p.isdigit():
-            status.config(text="'Parado após' deve ser um número.", fg="#c00")
+            status.config(text="'Parado após' deve ser um número.", fg=tema["erro"])
+            return
+        dias_t = dias_tarefas_var.get().strip() or "180"
+        if not dias_t.isdigit() or int(dias_t) < 1:
+            status.config(text="'Tarefas dos últimos (dias)' deve ser um número.",
+                          fg=tema["erro"])
             return
 
         def work():
@@ -1200,7 +1340,7 @@ def main():
                 prs.extend(lote)
 
             tarefas = {}
-            url_op = op_url_var.get().strip()
+            url_op, projeto = separar_projeto(op_url_var.get())
             token = token_var.get().strip()
             if url_op and token:
                 log("")
@@ -1218,6 +1358,19 @@ def main():
                 numeros = sorted({mod_ciclo.tarefa_do_pr(p) for p in prs if mod_ciclo.tarefa_do_pr(p)})
                 wps = cliente.work_packages_por_id(numeros)
                 log("  %d tarefa(s) dos PRs abertos, %d encontrada(s)" % (len(numeros), len(wps)))
+                if projeto:
+                    # com projeto na URL a lista deixa de sair dos PRs abertos: o
+                    # que importa e a tarefa, tenha PR aberto ou nao
+                    ja = {str(w.get("id")) for w in wps}
+                    do_projeto, truncou = cliente.work_packages_do_projeto(
+                        projeto, dias=int(dias_t))
+                    extras = [w for w in do_projeto if str(w.get("id")) not in ja]
+                    log("  projeto '%s': %d tarefa(s) nos últimos %s dias, +%d fora dos PRs abertos"
+                        % (projeto, len(do_projeto), dias_t, len(extras)))
+                    if truncou:
+                        log("  ATENÇÃO: bateu o teto de páginas - a lista do projeto está "
+                            "incompleta. Reduza 'Tarefas dos últimos (dias)'.")
+                    wps.extend(extras)
                 query_id = query_var.get().strip()
                 if query_id:
                     ja = {str(w.get("id")) for w in wps}
@@ -1225,9 +1378,10 @@ def main():
                               if str(w.get("id")) not in ja]
                     log("  query %s: +%d tarefa(s)" % (query_id, len(extras)))
                     wps.extend(extras)
-                nomes = cliente.nomes_de_campos(wps[0]) if wps else {}
                 for wp in wps:
-                    campos = cliente.campos_customizados(wp, nomes)
+                    # o schema e por projeto+tipo: ler o de uma tarefa e aplicar
+                    # em todas troca o nome dos campos das outras
+                    campos = cliente.campos_customizados(wp, cliente.nomes_de_campos(wp))
                     build = next((v for k, v in campos.items()
                                   if str(k).strip().upper().startswith("X5")), "")
                     situacao = titulo_do_link(wp, "status")
@@ -1304,13 +1458,30 @@ def main():
                 log("")
                 log("Sem clone local informado: não dá para distinguir 'mergeado' de "
                     "'PR não aberto' (informe a pasta do clone no campo Repositórios).")
+                if projeto:
+                    log("ATENÇÃO: no modo projeto é o histórico do clone que responde "
+                        "'o commit está na branch?'. Sem clone, toda branch obrigatória "
+                        "aparece como pendente.")
 
+            ignoradas = {}
             linhas = mod_ciclo.montar(
                 prs, tarefas, nome_prod, nome_main,
                 state.get("tipos_exigem", []), state.get("status_libera", []), int(dias_p),
                 revisoes=revisoes, historico=historico,
                 base_homologacao=nome_homo, modelo_branch=modelo,
+                exigir_pr=not projeto, ignoradas=ignoradas,
             )
+            log("")
+            if projeto:
+                log("--- modo projeto: %d tarefa(s) conferidas, com PR aberto ou sem ---"
+                    % len(tarefas))
+                if ignoradas.get("nao_entregues"):
+                    log("  %d tarefa(s) faltam numa branch de versão mas também não estão "
+                        "na principal: são trabalho não entregue, não backport atrasado."
+                        % ignoradas["nao_entregues"])
+            else:
+                log("--- modo PR aberto: sem projeto na URL, o que foi mergeado e teve o PR "
+                    "apagado não entra ---")
             resultado_ciclo["linhas"] = linhas
             resultado_ciclo["autores"] = sorted({p["autor"] for p in prs if p["autor"]})
             resultado_ciclo["usuario"] = usuario
@@ -1326,7 +1497,8 @@ def main():
 
     def do_abrir_ciclo():
         for linha in selecionadas_c()[:4]:
-            url_op = op_url_var.get().strip().rstrip("/")
+            # /work_packages/<id> e da instancia, nao do projeto
+            url_op, _projeto = separar_projeto(op_url_var.get())
             if linha["tarefa"] != "-" and url_op:
                 webbrowser.open("%s/work_packages/%s" % (url_op, linha["tarefa"]), new=2)
             for pr in linha["prs"][:4]:
@@ -1341,7 +1513,7 @@ def main():
         """
         linhas = list(ciclo_dados)
         if not linhas:
-            status.config(text="Nada carregado para exportar.", fg="#c00")
+            status.config(text="Nada carregado para exportar.", fg=tema["erro"])
             return
         caminho = filedialog.asksaveasfilename(
             parent=root, title="Exportar análise do ciclo",
@@ -1368,10 +1540,10 @@ def main():
                  [10, 14, 16, 16, 12, 30, 10, 22, 12, 12, 60]),
             ])
         except Exception as exc:
-            status.config(text="Não consegui gravar a planilha: %r" % (exc,), fg="#c00")
+            status.config(text="Não consegui gravar a planilha: %r" % (exc,), fg=tema["erro"])
             log("Falha ao exportar: %r" % (exc,))
             return
-        status.config(text="Exportado: %s" % caminho, fg="#0a7a0a")
+        status.config(text="Exportado: %s" % caminho, fg=tema["ok"])
         log("Planilha gravada em %s (%d tarefa(s), %d linha(s) por branch)." % (
             caminho, len(tabela), len(mod_ciclo.linhas_por_branch(linhas))))
 

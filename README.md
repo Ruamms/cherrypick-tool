@@ -40,6 +40,14 @@ O executável embute o runtime do Python — **não** é preciso ter Python inst
 Nas duas abas, **clicar no cabeçalho de uma coluna ordena por ela**; clicar de novo inverte
 (▲/▼ marcam a coluna ativa). A ordenação é sobre o resultado já carregado — não refaz consulta.
 
+## A explicação mora na célula
+
+As duas janelas são escuras, e **não existe bloco de legenda**: pare o mouse em cima de uma
+célula e o balão diz o que aquele valor quer dizer — a explicação da pendência, o que é
+`não solicitado`, quais branches são obrigatórias naquela tarefa, o texto inteiro do que a
+coluna cortou. No cabeçalho, o balão diz para que serve a coluna; no rótulo de um campo, o que
+preencher. Legenda que ocupa um terço da janela e ninguém lê deixou de existir.
+
 ---
 
 # BackportCheck
@@ -242,9 +250,32 @@ células que têm link). **BUILD (X5)** mostra o campo de build da tarefa.
 > aparecer — o que você verá é `comentado, sem aprovar` contra `aguardando aprovação`, que
 > ainda separa o PR que alguém olhou do PR em que ninguém encostou.
 
-**Escopo desta versão: só PR aberto.** O que já foi mergeado sai do radar. Por isso a pendência
-se chama *sem PR aberto para produção* e não *não está na produção* — para saber isso, use a
-aba git, que lê o histórico e não depende de PR nenhum.
+### Dois escopos: PR aberto ou o projeto inteiro
+
+Quem decide é a URL do OpenProject:
+
+| URL | Escopo | Consequência |
+| --- | ------ | ------------ |
+| `https://op.empresa.com.br` | **só PR aberto** | a lista sai dos PRs abertos. O que foi mergeado e teve o PR apagado sai do radar. |
+| `https://op.empresa.com.br/projects/meu-time` | **o projeto** | a lista sai das *tarefas* do projeto, com PR aberto ou sem. |
+
+O segundo escopo existe por causa de um caso concreto: o PR foi para a principal, foi mergeado
+e o branch apagado. Não há PR aberto em lugar nenhum, então o radar de PR não tem o que ver — e
+a tarefa continua faltando na produção e na homologação, sem ninguém avisar. Com o projeto na
+URL, é o **histórico do git** que responde "o commit está nessa branch?", e a tarefa volta a ser
+cobrada mesmo sem PR.
+
+No modo projeto:
+
+- entram as tarefas de **qualquer status** (a fechada é justamente a que interessa) mexidas
+  dentro da janela do campo **Tarefas dos últimos (dias)**;
+- uma tarefa sem PR aberto só aparece se tiver o que fazer: faltar numa branch obrigatória ou
+  estar com o campo de build vazio;
+- tarefa que falta numa versão **e também não está na principal** fica de fora: isso não é
+  backport atrasado, é trabalho que não terminou. O log diz quantas foram, para o corte não
+  ser silencioso;
+- o **clone local é obrigatório** na prática — é dele que sai a resposta sobre o histórico.
+  Sem clone, toda branch obrigatória aparece como pendente, e o log avisa.
 
 ### Os campos
 
@@ -253,7 +284,8 @@ Na ordem em que aparecem na tela:
 | Campo | O que é |
 | ----- | ------- |
 | **Repositórios** | `org/repo` separados por vírgula **ou** o caminho de um clone — nesse caso o `org/repo` é descoberto pelo remote `origin`. Vazio usa o repositório da aba git. |
-| **OpenProject** | URL da sua instância. **Opcional**: sem ela a aba roda só com o GitHub e deduz o tipo do título do PR. |
+| **OpenProject** | URL da sua instância, ou de um **projeto** dela (`.../projects/meu-time`) — com projeto, a análise deixa de depender de PR aberto (veja acima). **Opcional**: sem ela a aba roda só com o GitHub e deduz o tipo do título do PR. |
+| **Tarefas dos últimos (dias)** | janela das tarefas do projeto. Vale **só** no modo projeto; no outro é ignorado. |
 | **Token da API** | token pessoal do OpenProject (*Minha conta → Tokens de acesso*), **nunca** a sua senha. O botão **Onde pegar o token** abre essa página. Guardado cifrado nesta máquina. |
 | **Autor** | filtra por quem abriu o PR; a lista é preenchida pela carga. `(todos)` mostra o time inteiro. |
 | **Branch de produção** | contra qual branch o PR de produção é esperado (ex.: `release-2601`). Vazio, usa a da aba git. A comparação ignora maiúsculas. |

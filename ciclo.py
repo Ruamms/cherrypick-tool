@@ -39,13 +39,13 @@ ORDEM_CICLO = {MERGEAR: 0, SEM_PROD: 1, SEM_VERSAO: 2, APROVAR: 3,
                SEM_BUILD: 4, PARADO: 5, OK: 6}
 
 CORES_CICLO = {
-    MERGEAR: "#0a7a0a",
-    SEM_PROD: "#b00000",
-    SEM_VERSAO: "#a00050",
-    APROVAR: "#0a4fb0",
-    SEM_BUILD: "#8a5a00",
-    PARADO: "#b06000",
-    OK: "#707070",
+    MERGEAR: "#5ec269",
+    SEM_PROD: "#ff6b6b",
+    SEM_VERSAO: "#ff7fbf",
+    APROVAR: "#6fa8ff",
+    SEM_BUILD: "#d9a441",
+    PARADO: "#ffa657",
+    OK: "#9aa0a6",
 }
 
 LEGENDA_CICLO = (
@@ -72,6 +72,35 @@ NAO_SOLICITADO = "não solicitado"
 # tipos de manutenção mais comuns, usados só como reserva quando a tarefa não
 # está no gerenciador: o título do PR costuma trazer a natureza.
 TIPOS_CONHECIDOS = ("divida tecnica", "corretiva", "adaptativa", "evolutiva", "regressao")
+
+# o que cada frase de branch quer dizer. Vive aqui, junto das frases, e é lido
+# pelo balão da grade - não existe legenda escrita à parte para sair de sincronia.
+EXPLICACAO_SITUACAO = (
+    (MERGEADO, "a tarefa aparece no histórico dessa branch (lido do clone local)"),
+    (APROVADO, "PR aberto e já aprovado na revisão - falta mergear"),
+    (AJUSTES, "PR aberto com pedido de mudança na revisão"),
+    (COMENTADO, "alguém revisou e comentou, mas não apertou aprovar"),
+    (AGUARDANDO, "PR aberto e ninguém encostou ainda"),
+    (RASCUNHO, "PR aberto como rascunho (draft)"),
+    (SEM_PR, "nada aberto e nada no histórico dessa branch"),
+    (NAO_CONFERIDO, "nada aberto e não havia clone local para conferir o histórico"),
+    (NAO_SOLICITADO, "essa branch não é obrigatória para essa tarefa"),
+)
+
+
+def explicar_situacao(texto):
+    """Explicação da frase da célula, que vem com '#123' e '(5d)' colados."""
+    for frase, explicacao in EXPLICACAO_SITUACAO:
+        if frase in (texto or ""):
+            return explicacao
+    return ""
+
+
+def explicar_pendencia(pendencia):
+    for nome, texto in LEGENDA_CICLO:
+        if nome == pendencia:
+            return texto
+    return ""
 
 
 def sem_acento(texto):
@@ -283,13 +312,20 @@ def _lado(nome, prs_do_grupo, obrigatorias, revisoes, tarefa, historico, hoje):
 
 def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
            status_libera, dias_parado=7, hoje=None, revisoes=None, historico=None,
-           base_homologacao="", modelo_branch=""):
+           base_homologacao="", modelo_branch="", exigir_pr=True, ignoradas=None):
     """Agrupa os PRs abertos por tarefa e aponta em qual branch ela está pendente.
 
     tarefas: {número: {"tipo","status","fechado","assunto","build","entrega","ramos"}}.
     revisões: {(repo, número_pr): "aprovado"|"ajustes"|"comentado"|""}.
     histórico: {nome_da_branch: set de números de tarefa}, None naquela branch
     quando não havia clone local para conferir.
+
+    exigir_pr=True é o comportamento antigo: tarefa sem PR aberto só aparece no
+    caso do build vazio. Com False - a URL do OpenProject aponta para um projeto
+    - toda tarefa do projeto é conferida contra o histórico das branches mesmo
+    sem PR aberto, que é o caso do PR já mergeado e apagado.
+
+    ignoradas: dicionário opcional, preenchido com o que ficou de fora.
     """
     hoje = hoje or datetime.date.today()
     revisoes = revisoes or {}
@@ -421,27 +457,59 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             },
         })
 
-    # tarefas sem PR aberto (vieram da query salva) só entram se apontarem pendência:
-    # concluídas e sem build preenchido - o "já foi feito e o X5 ficou vazio"
+    # Tarefas sem NENHUM PR aberto. Elas existem porque o PR foi mergeado e
+    # apagado - e é justamente aí que o backport se perde: sem PR aberto, o
+    # radar de PR não vê nada, e quem responde "está na branch?" é o histórico
+    # do git. Só entram se apontarem pendência, para a lista continuar sendo
+    # lista de coisa para fazer.
+    sem_pr = 0
     for numero, dados in tarefas.items():
         if numero in grupos:
             continue
         concluida = dados.get("fechado") or (
             sem_acento(dados.get("status", "")) in libera if libera else False)
-        if not (concluida and not dados.get("build")):
-            continue
+        falta_build = bool(concluida and not dados.get("build"))
         obrigatorias = branches_obrigatorias(dados.get("tipo", ""), dados, cfg)
         nomes = list(dict.fromkeys(nomeadas + obrigatorias))
         lados = [_lado(n, [], obrigatorias, revisoes, numero, historico, hoje) for n in nomes]
         por_nome = {l["nome"]: l for l in lados}
+        lado_principal = por_nome.get(base_principal)
+        lado_prod = por_nome.get(base_producao)
         pendentes = [l for l in lados if l["pendente"]]
+        faltando = [l for l in pendentes if l is not lado_principal]
+        # na principal a tarefa ainda não chegou: não é backport atrasado, é
+        # trabalho que não terminou - e isso quem cobra é o gerenciador
+        entregue = lado_principal is None or not lado_principal["pendente"]
+
+        if exigir_pr:
+            # modo antigo (sem projeto na URL): só o caso do build vazio
+            if not falta_build:
+                continue
+            pendencia = SEM_BUILD
+            detalhe = "tarefa concluída e sem o campo de build preenchido"
+        elif faltando and entregue:
+            if lado_prod is not None and lado_prod in faltando:
+                pendencia = SEM_PROD
+                detalhe = "está na principal e falta na produção, e não há PR aberto"
+            else:
+                pendencia = SEM_VERSAO
+                detalhe = "está na principal e falta em %s, e não há PR aberto" % ", ".join(
+                    l["nome"] for l in faltando)
+        elif falta_build:
+            pendencia = SEM_BUILD
+            detalhe = "tarefa concluída e sem o campo de build preenchido"
+        else:
+            if faltando:
+                sem_pr += 1
+            continue
+
         linhas.append({
             "tarefa": numero, "chave": numero,
             "tipo": dados.get("tipo", "-"), "origem_tipo": "gerenciador",
-            "status_wp": dados.get("status", "-"), "build": "",
+            "status_wp": dados.get("status", "-"), "build": dados.get("build", ""),
             "assunto": dados.get("assunto", ""),
             "entrega": verdadeiro(dados.get("entrega")),
-            "tem_entrega": True,
+            "tem_entrega": dados.get("entrega") is not None,
             "ramos": dados.get("ramos", "") or "",
             "versoes": versoes_do_texto(dados.get("ramos", "")),
             "obrigatorias": [l["nome"] for l in lados if l["obrigatoria"]],
@@ -455,11 +523,14 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
                                if base_homologacao in por_nome else ""),
             "pr_outros": "",
             "autores": [], "idade": 0,
-            "pendencia": SEM_BUILD,
-            "detalhe": "tarefa concluída e sem o campo de build preenchido",
+            "pendencia": pendencia,
+            "detalhe": detalhe,
             "prs": [],
             "urls": {"principal": [], "producao": [], "homologacao": [], "outros": []},
         })
+    if ignoradas is not None:
+        # sem silêncio: quem ficou de fora e por quê
+        ignoradas["nao_entregues"] = sem_pr
 
     linhas.sort(key=lambda x: (ORDEM_CICLO.get(x["pendencia"], 9), -x["idade"]))
     return linhas
