@@ -1107,8 +1107,11 @@ def main():
         quadro = tk.Frame(janela, padx=16)
         quadro.pack(fill="both", expand=True)
         escolhas = {}
+        # marcado sem diferenciar acento nem caixa: e assim que a regra compara,
+        # e a caixa nao pode aparecer desmarcada com a regra valendo
+        ja_marcados = {mod_ciclo.sem_acento(m) for m in marcados}
         for opcao in opcoes:
-            var = tk.BooleanVar(value=opcao in marcados)
+            var = tk.BooleanVar(value=mod_ciclo.sem_acento(opcao) in ja_marcados)
             escolhas[opcao] = var
             tk.Checkbutton(quadro, text=opcao, variable=var).pack(anchor="w")
         saida = {"ok": False}
@@ -1311,7 +1314,7 @@ def main():
             resultado_ciclo["linhas"] = linhas
             resultado_ciclo["autores"] = sorted({p["autor"] for p in prs if p["autor"]})
             resultado_ciclo["usuario"] = usuario
-            resultado_ciclo["tipos_vistos"] = sorted({l["tipo"] for l in linhas if l["tipo"] != "-"})
+            resultado_ciclo["tipos_vistos"] = mod_ciclo.tipos_vistos(linhas)
             resultado_ciclo["status_vistos"] = sorted(
                 {l["status_wp"] for l in linhas if l["status_wp"] != "-"})
             resultado_ciclo["status_fechados"] = sorted(fechados) if url_op and token else []

@@ -80,9 +80,15 @@ def sem_acento(texto):
 
 
 def tarefa_do_pr(pr):
-    """Número da tarefa a partir do branch (fb_123456_2601) ou do título."""
+    """Número da tarefa a partir do branch (fb_123456_2601) ou do título.
+
+    O `_` vira espaço antes de casar: `_` conta como caractere de palavra, então
+    em 'fb_123456_2601' não existe fronteira `\\b` antes do número e o nome do
+    branch nunca era lido - sobrava só o título, e PR de título sem número ficava
+    sem tarefa nenhuma.
+    """
     for origem in (pr.get("head", ""), pr.get("titulo", "")):
-        limpo = re.sub(r"\(#\d+\)", " ", origem)
+        limpo = re.sub(r"\(#\d+\)", " ", origem).replace("_", " ")
         achado = re.findall(r"\b\d{5,7}\b", limpo)
         if achado:
             return achado[0]
@@ -96,6 +102,26 @@ def tipo_do_titulo(titulo):
         if tipo in limpo:
             return tipo
     return ""
+
+
+def tipos_vistos(linhas):
+    """Tipos encontrados, um por tipo - sem repetir por causa da caixa alta.
+
+    O tipo chega escrito de duas formas: como o gerenciador manda ('Corretiva')
+    ou deduzido do título do PR, que sai de TIPOS_CONHECIDOS em minúsculas
+    ('corretiva'). Para a regra são o mesmo tipo, porque a comparação é sem
+    acento e sem caixa - mas a lista da tela mostrava duas caixas para marcar.
+    Vale a grafia do gerenciador, que é a que a pessoa reconhece.
+    """
+    escolhida = {}
+    for linha in linhas:
+        tipo = (linha.get("tipo") or "").strip()
+        if not tipo or tipo == "-":
+            continue
+        chave = sem_acento(tipo)
+        if chave not in escolhida or linha.get("origem_tipo") == "gerenciador":
+            escolhida[chave] = tipo
+    return sorted(escolhida.values(), key=sem_acento)
 
 
 def mesma_branch(um, outro):

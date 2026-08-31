@@ -84,6 +84,37 @@ class TestVersoes(unittest.TestCase):
             self.assertFalse(ciclo.verdadeiro(valor), valor)
 
 
+class TestNumeroDaTarefa(unittest.TestCase):
+    def test_le_o_numero_do_nome_do_branch(self):
+        """`_` conta como caractere de palavra: sem trocar por espaço, o nome do
+        branch nunca era lido e PR de título sem número ficava sem tarefa."""
+        casos = {
+            "fb_109866_2601": "109866",
+            "fb_109866": "109866",
+            "fb_108692_2502": "108692",
+            "109866-ajuste": "109866",
+            "release/fb_104328_2601": "104328",
+        }
+        for head, esperado in casos.items():
+            achado = ciclo.tarefa_do_pr({"head": head, "titulo": "sem numero aqui"})
+            self.assertEqual(achado, esperado, head)
+
+    def test_titulo_serve_de_reserva(self):
+        self.assertEqual(
+            ciclo.tarefa_do_pr({"head": "ajuste-utf8", "titulo": "OP 110122 - encargos"}),
+            "110122")
+
+    def test_nao_confunde_o_numero_do_pr_do_squash(self):
+        self.assertEqual(
+            ciclo.tarefa_do_pr({"head": "ajuste", "titulo": "Corretiva (#108692)"}), "")
+
+    def test_sufixo_de_versao_nao_e_tarefa(self):
+        self.assertEqual(ciclo.tarefa_do_pr({"head": "fb_2601", "titulo": "x"}), "")
+
+    def test_pr_sem_numero_nenhum(self):
+        self.assertEqual(ciclo.tarefa_do_pr({"head": "utf8", "titulo": "Ajustes"}), "")
+
+
 class TestBranchesObrigatorias(unittest.TestCase):
     def cfg(self, exigem=("Corretiva", "Divida Tecnica"), homo=HOMO):
         return {"principal": MAIN, "producao": PROD, "homologacao": homo,
@@ -339,6 +370,56 @@ class TestFormatoLongo(unittest.TestCase):
         self.assertEqual(por_branch[HOMO][4], "não")     # obrigatória
         self.assertEqual(por_branch[HOMO][6], "não")     # pendente
         self.assertEqual(por_branch[HOMO][8], "não")     # entrega ao cliente
+
+
+class TestTiposVistos(unittest.TestCase):
+    """A lista de 'Tipos que exigem produção' mostrava 'Corretiva' e 'corretiva'
+    como duas opções: a primeira vem do gerenciador, a segunda é deduzida do
+    título do PR. Para a regra sempre foram o mesmo tipo."""
+
+    def test_mesma_grafia_do_gerenciador_ganha(self):
+        linhas = [{"tipo": "corretiva", "origem_tipo": "título do PR"},
+                  {"tipo": "Corretiva", "origem_tipo": "gerenciador"}]
+        self.assertEqual(ciclo.tipos_vistos(linhas), ["Corretiva"])
+
+    def test_ordem_do_gerenciador_nao_importa(self):
+        linhas = [{"tipo": "Corretiva", "origem_tipo": "gerenciador"},
+                  {"tipo": "corretiva", "origem_tipo": "título do PR"}]
+        self.assertEqual(ciclo.tipos_vistos(linhas), ["Corretiva"])
+
+    def test_acento_tambem_e_o_mesmo_tipo(self):
+        linhas = [{"tipo": "divida tecnica", "origem_tipo": "título do PR"},
+                  {"tipo": "Dívida Técnica", "origem_tipo": "gerenciador"}]
+        self.assertEqual(ciclo.tipos_vistos(linhas), ["Dívida Técnica"])
+
+    def test_sem_gerenciador_fica_o_deduzido(self):
+        linhas = [{"tipo": "corretiva", "origem_tipo": "título do PR"}]
+        self.assertEqual(ciclo.tipos_vistos(linhas), ["corretiva"])
+
+    def test_ignora_o_tipo_nao_identificado(self):
+        linhas = [{"tipo": "-", "origem_tipo": "não identificado"},
+                  {"tipo": "", "origem_tipo": "não identificado"},
+                  {"tipo": "Análise", "origem_tipo": "gerenciador"}]
+        self.assertEqual(ciclo.tipos_vistos(linhas), ["Análise"])
+
+    def test_da_carga_real_sai_uma_opcao_por_tipo(self):
+        prs = [pr(8006, MAIN, "108692", titulo="Corretiva - OP 108692 - copiar perfil"),
+               pr(8010, MAIN, "108693", titulo="Corretiva - OP 108693 - outro erro")]
+        linhas = ciclo.montar(prs, {"108692": tarefa("Corretiva")}, PROD, MAIN,
+                              ["Corretiva"], [], hoje=HOJE,
+                              historico={MAIN: set(), PROD: set()})
+        # 108693 não está no gerenciador: o tipo dela sai do título, minúsculo
+        self.assertEqual(sorted(l["tipo"] for l in linhas), ["Corretiva", "corretiva"])
+        self.assertEqual(ciclo.tipos_vistos(linhas), ["Corretiva"])
+
+    def test_as_duas_grafias_continuam_sendo_cobradas(self):
+        """Marcar 'Corretiva' tem de cobrar produção nas duas grafias."""
+        cfg = {"principal": MAIN, "producao": PROD, "homologacao": "",
+               "tipos_exigem": ["Corretiva"]}
+        for grafia in ("Corretiva", "corretiva", "CORRETIVA"):
+            self.assertEqual(
+                ciclo.branches_obrigatorias(grafia, tarefa(grafia), cfg),
+                [MAIN, PROD], grafia)
 
 
 class TestChavesSemAcento(unittest.TestCase):

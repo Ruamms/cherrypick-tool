@@ -280,6 +280,11 @@ produção virar a 2602, você troca os dois campos e nada mais.
 Os dois botões de configuração só listam valores depois da primeira carga — eles mostram o que
 existe na sua base, não uma lista fixa.
 
+Cada tipo aparece **uma vez**, com a grafia do gerenciador. O tipo chega escrito de duas
+formas — como o gerenciador manda (`Corretiva`) ou deduzido do título do PR, em minúsculas
+(`corretiva`) — e para a regra sempre foram o mesmo tipo, porque a comparação ignora acento e
+caixa. Marcar um marca os dois.
+
 ### Filtros
 
 Ficam abaixo dos botões e agem **sobre o resultado já carregado** — trocar filtro não refaz
