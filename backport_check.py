@@ -381,7 +381,7 @@ def main():
     from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
     from cherrypick_tool import (
-        aplicar_tema, criar_balao, pr_compare_url, remote_web_url,
+        aplicar_tema, criar_balao, escurecer_barra, pr_compare_url, remote_web_url,
     )
 
     root = tk.Tk()
@@ -662,8 +662,6 @@ def main():
             "conta": conta_var.get(),
             "producao_ciclo": prod_c_var.get().strip(),
             "homologacao": homo_c_var.get().strip(),
-            "entrega_filtro": entrega_var.get(),
-            "versao_filtro": versao_var.get(),
             "dias_tarefas": dias_tarefas_var.get().strip() or "180",
         })
         save_state(state)
@@ -849,7 +847,8 @@ def main():
         desproteger, separar_projeto, titulo_do_link,
     )
 
-    ciclo_cache = {"linhas": [], "tipos": [], "status": [], "fechados": [], "usuario": ""}
+    ciclo_cache = {"linhas": [], "tipos": [], "status": [], "fechados": [],
+                   "usuario": "", "versoes": []}
     ciclo_dados = []
     resultado_ciclo = {}
 
@@ -989,18 +988,40 @@ def main():
     # filtros sobre o resultado já carregado: trocar filtro não refaz consulta
     filtros_c = tk.Frame(aba_ciclo, padx=10, pady=4)
     filtros_c.pack(fill="x")
-    tk.Label(filtros_c, text="Filtrar:  entrega ao cliente").pack(side="left")
-    entrega_var = tk.StringVar(value=state.get("entrega_filtro", TODOS))
-    entrega_combo = ttk.Combobox(filtros_c, textvariable=entrega_var, width=10, state="readonly",
-                                 values=[TODOS, "Sim", "Não"])
-    entrega_combo.pack(side="left", padx=(6, 0))
-    if entrega_var.get() not in (TODOS, "Sim", "Não"):
-        entrega_var.set(TODOS)
-    tk.Label(filtros_c, text="versão pedida (ramos)").pack(side="left", padx=(14, 0))
-    versao_var = tk.StringVar(value=state.get("versao_filtro", TODAS))
-    versao_combo = ttk.Combobox(filtros_c, textvariable=versao_var, width=12, state="readonly",
-                                values=[TODAS])
-    versao_combo.pack(side="left", padx=(6, 0))
+    tk.Label(filtros_c, text="Filtrar:").pack(side="left")
+    btn_entrega = tk.Button(filtros_c, text="Entrega ao cliente...", width=26)
+    btn_entrega.pack(side="left", padx=(6, 6))
+    btn_versao = tk.Button(filtros_c, text="Versão pedida (ramos)...", width=26)
+    btn_versao.pack(side="left")
+
+    def _lista_do_estado(chave):
+        """Aceita a lista de hoje e o texto de uma versão anterior do estado."""
+        valor = state.get(chave)
+        if isinstance(valor, list):
+            return [v for v in valor if v not in (TODOS, TODAS)]
+        if isinstance(valor, str) and valor not in ("", TODOS, TODAS):
+            return [valor]
+        return []
+
+    def tipos_exigem():
+        """Tipos que exigem as branches de versão. Sem escolha salva vale o padrão
+        de manutenção, para a ferramenta já servir para algo na primeira abertura."""
+        if "tipos_exigem" in state:
+            return state["tipos_exigem"]
+        return list(mod_ciclo.TIPOS_PADRAO)
+
+    def marcados_entrega():
+        return _lista_do_estado("entrega_filtro")
+
+    def marcados_versao():
+        return _lista_do_estado("versao_filtro")
+
+    def atualizar_botoes_filtro():
+        """O botão mostra o que está filtrando: caixa de diálogo esconde estado."""
+        entrega = marcados_entrega()
+        versoes = marcados_versao()
+        btn_entrega.config(text="Entrega ao cliente: %s" % (", ".join(entrega) or TODOS))
+        btn_versao.config(text="Versão pedida: %s" % (", ".join(versoes) or TODAS))
     tk.Label(filtros_c, fg=tema["dica"], text=(
         "|   pare o mouse em cima de uma célula (ou do cabeçalho) para ver o que ela diz"
     )).pack(side="left", padx=(10, 0))
@@ -1182,20 +1203,21 @@ def main():
         """Filtros de tela: autor, entrega ao cliente e versão pedida nos ramos.
 
         Todos sobre o resultado já carregado - trocar filtro não refaz consulta.
+        Lista de marcados vazia = filtro desligado, e não 'não mostra nada'.
         """
         autor = autor_c_var.get()
-        entrega = entrega_var.get()
-        versao = versao_var.get()
+        entrega = marcados_entrega()
+        versoes = marcados_versao()
         linhas = []
         for linha in ciclo_cache["linhas"]:
             if autor != TODOS and autor not in linha["autores"]:
                 continue
-            if entrega == "Sim" and not linha["entrega"]:
+            if entrega and mod_ciclo.rotulo_entrega(linha) not in entrega:
                 continue
-            if entrega == "Não" and linha["entrega"]:
-                continue
-            if versao != TODAS and versao not in linha["versoes"]:
-                continue
+            if versoes:
+                pedidas = linha["versoes"] or [mod_ciclo.SEM_VERSAO_PEDIDA]
+                if not any(v in versoes for v in pedidas):
+                    continue
             linhas.append(linha)
         return linhas
 
@@ -1224,8 +1246,6 @@ def main():
         status.config(text=resumo, fg=tema["texto"])
         return resumo
 
-    entrega_combo.bind("<<ComboboxSelected>>", lambda _e: render_ciclo())
-    versao_combo.bind("<<ComboboxSelected>>", lambda _e: render_ciclo())
 
     ligar_ordenacao(grid_c, colunas_c, titulos_c, ordem_ciclo, CHAVES_CICLO,
                     lambda: render_ciclo())
@@ -1238,6 +1258,7 @@ def main():
         janela.title(titulo)
         janela.transient(root)
         janela.grab_set()
+        escurecer_barra(janela)
         tk.Label(janela, text=titulo, padx=12, pady=8).pack(anchor="w")
         quadro = tk.Frame(janela, padx=16)
         quadro.pack(fill="both", expand=True)
@@ -1266,13 +1287,39 @@ def main():
 
     def do_tipos():
         escolha = escolher_varios("Tipos de tarefa que exigem chegar na produção:",
-                                  ciclo_cache["tipos"], state.get("tipos_exigem", []))
+                                  ciclo_cache["tipos"], tipos_exigem())
         if escolha is None:
             return
         state["tipos_exigem"] = escolha
         salvar()
         if ciclo_cache["linhas"]:
             do_carregar_ciclo()
+
+    def do_filtro_entrega():
+        escolha = escolher_varios(
+            "Mostrar só as tarefas com 'Confirmar entrega ao cliente?' assim "
+            "-- nada marcado mostra todas:",
+            [mod_ciclo.ENTREGA_SIM, mod_ciclo.ENTREGA_NAO, mod_ciclo.ENTREGA_VAZIO],
+            marcados_entrega())
+        if escolha is None:
+            return
+        state["entrega_filtro"] = escolha
+        salvar()
+        atualizar_botoes_filtro()
+        render_ciclo()
+
+    def do_filtro_versao():
+        opcoes = list(ciclo_cache.get("versoes", [])) + [mod_ciclo.SEM_VERSAO_PEDIDA]
+        escolha = escolher_varios(
+            "Mostrar só as tarefas que pedem estas versões em 'ramos para "
+            "disponibilização' -- nada marcado mostra todas:",
+            opcoes, marcados_versao())
+        if escolha is None:
+            return
+        state["versao_filtro"] = escolha
+        salvar()
+        atualizar_botoes_filtro()
+        render_ciclo()
 
     def do_status():
         # os status marcados como fechados na própria instância já contam por si;
@@ -1300,12 +1347,13 @@ def main():
             autor_c_var.set(resultado_ciclo.get("usuario") if
                             resultado_ciclo.get("usuario") in autores else TODOS)
         versoes = resultado_ciclo.get("versoes_vistas", [])
-        versao_combo["values"] = [TODAS] + versoes
-        if versao_var.get() not in [TODAS] + versoes:
-            versao_var.set(TODAS)
+        ciclo_cache["versoes"] = versoes
+        state["versao_filtro"] = [v for v in marcados_versao() if v in
+                                  versoes + [mod_ciclo.SEM_VERSAO_PEDIDA]]
+        atualizar_botoes_filtro()
         log("")
         log(render_ciclo())
-        if not state.get("tipos_exigem"):
+        if not tipos_exigem():
             log("Nenhum tipo marcado em 'Tipos que exigem produção...' - sem isso, nenhuma "
                 "tarefa é cobrada por falta de PR de produção.")
 
@@ -1466,7 +1514,7 @@ def main():
             ignoradas = {}
             linhas = mod_ciclo.montar(
                 prs, tarefas, nome_prod, nome_main,
-                state.get("tipos_exigem", []), state.get("status_libera", []), int(dias_p),
+                tipos_exigem(), state.get("status_libera", []), int(dias_p),
                 revisoes=revisoes, historico=historico,
                 base_homologacao=nome_homo, modelo_branch=modelo,
                 exigir_pr=not projeto, ignoradas=ignoradas,
@@ -1552,7 +1600,10 @@ def main():
     btn_tipos.config(command=do_tipos)
     btn_status.config(command=do_status)
     btn_excel.config(command=do_excel)
+    btn_entrega.config(command=do_filtro_entrega)
+    btn_versao.config(command=do_filtro_versao)
     btn_abrir_wp.config(command=do_abrir_ciclo)
+    atualizar_botoes_filtro()
     grid_c.bind("<Double-1>", lambda _e: do_abrir_ciclo())
 
     log("Aba 'Backport (git)': compara a principal com a produção e lista o que falta portar.")

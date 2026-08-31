@@ -73,6 +73,25 @@ NAO_SOLICITADO = "não solicitado"
 # está no gerenciador: o título do PR costuma trazer a natureza.
 TIPOS_CONHECIDOS = ("divida tecnica", "corretiva", "adaptativa", "evolutiva", "regressao")
 
+# Marcados quando ninguém escolheu ainda. Manutenção (correção e dívida técnica)
+# precisa chegar na versão que o cliente usa; funcionalidade nova, não. Sem acento
+# e minúsculo de propósito: a comparação com o nome do gerenciador é normalizada,
+# então isso casa com 'Corretiva' e 'Dívida Técnica'.
+TIPOS_PADRAO = ("corretiva", "divida tecnica")
+
+# rótulos do filtro de 'Confirmar entrega ao cliente?'
+ENTREGA_SIM = "Sim"
+ENTREGA_NAO = "Não"
+ENTREGA_VAZIO = "(não informado)"
+SEM_VERSAO_PEDIDA = "(nenhuma)"
+
+
+def rotulo_entrega(linha):
+    """Como a tarefa entra no filtro de entrega ao cliente."""
+    if not linha.get("tem_entrega"):
+        return ENTREGA_VAZIO
+    return ENTREGA_SIM if linha.get("entrega") else ENTREGA_NAO
+
 # o que cada frase de branch quer dizer. Vive aqui, junto das frases, e é lido
 # pelo balão da grade - não existe legenda escrita à parte para sair de sincronia.
 EXPLICACAO_SITUACAO = (

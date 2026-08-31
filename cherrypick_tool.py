@@ -325,6 +325,28 @@ TEMA = {
 }
 
 
+def escurecer_barra(janela):
+    """Pinta a barra de título de escuro. Ela não é do Tk: é o Windows que
+    desenha, e só obedece ao DWM (DWMWA_USE_IMMERSIVE_DARK_MODE).
+
+    Silencioso em caso de erro: barra clara é feio, travar a janela é pior.
+    """
+    import ctypes
+
+    try:
+        janela.update_idletasks()
+        # no Windows o HWND real do toplevel é o pai do id que o Tk devolve
+        hwnd = ctypes.windll.user32.GetParent(janela.winfo_id()) or janela.winfo_id()
+        ligado = ctypes.c_int(1)
+        for atributo in (20, 19):      # 20: Win11 e Win10 20H1+; 19: builds anteriores
+            if ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, atributo, ctypes.byref(ligado), ctypes.sizeof(ligado)) == 0:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def aplicar_tema(root):
     """Pinta a janela de escuro. Devolve o dicionário de cores.
 
@@ -336,6 +358,7 @@ def aplicar_tema(root):
 
     t = TEMA
     root.configure(bg=t["fundo"])
+    escurecer_barra(root)
     opcoes = (
         ("*background", t["fundo"]),
         ("*foreground", t["texto"]),

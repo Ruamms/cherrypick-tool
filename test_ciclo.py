@@ -343,6 +343,50 @@ class TestMultiplasBranches(unittest.TestCase):
         self.assertEqual(linha["obrigatorias"], [MAIN, PROD, HOMO])
 
 
+class TestPadraoDosTipos(unittest.TestCase):
+    """Sem escolha salva, os tipos de manutenção já vêm marcados - a ferramenta
+    tem de servir para algo na primeira abertura."""
+
+    def cfg(self):
+        return {"principal": MAIN, "producao": PROD, "homologacao": HOMO,
+                "tipos_exigem": list(ciclo.TIPOS_PADRAO)}
+
+    def test_o_padrao_casa_com_a_grafia_do_gerenciador(self):
+        for tipo in ("Corretiva", "corretiva", "Dívida Técnica", "divida tecnica"):
+            self.assertEqual(
+                ciclo.branches_obrigatorias(tipo, tarefa(tipo), self.cfg()),
+                [MAIN, PROD, HOMO], tipo)
+
+    def test_o_padrao_nao_cobra_funcionalidade_nova(self):
+        for tipo in ("Evolutiva", "Adaptativa", "Análise", "Sugestão"):
+            self.assertEqual(
+                ciclo.branches_obrigatorias(tipo, tarefa(tipo), self.cfg()), [MAIN], tipo)
+
+    def test_padrao_sem_acento_de_proposito(self):
+        # a comparação é normalizada; acentuar aqui faria o casamento parar
+        for tipo in ciclo.TIPOS_PADRAO:
+            self.assertEqual(tipo, ciclo.sem_acento(tipo), tipo)
+
+
+class TestFiltroEntrega(unittest.TestCase):
+    def test_rotulo_de_cada_caso(self):
+        self.assertEqual(ciclo.rotulo_entrega({"tem_entrega": True, "entrega": True}),
+                         ciclo.ENTREGA_SIM)
+        self.assertEqual(ciclo.rotulo_entrega({"tem_entrega": True, "entrega": False}),
+                         ciclo.ENTREGA_NAO)
+        self.assertEqual(ciclo.rotulo_entrega({"tem_entrega": False, "entrega": False}),
+                         ciclo.ENTREGA_VAZIO)
+        self.assertEqual(ciclo.rotulo_entrega({}), ciclo.ENTREGA_VAZIO)
+
+    def test_rotulo_sai_da_linha_montada(self):
+        linhas = ciclo.montar(
+            [pr(8030, MAIN, "109866")],
+            {"109866": tarefa("Adaptativa", entrega=True, ramos="2602")},
+            PROD, MAIN, [], [], hoje=HOJE, base_homologacao=HOMO,
+            historico={MAIN: set(), PROD: set(), HOMO: set()})
+        self.assertEqual(ciclo.rotulo_entrega(uma(linhas, "109866")), ciclo.ENTREGA_SIM)
+
+
 class TestUrlDoProjeto(unittest.TestCase):
     def test_separa_instancia_e_projeto(self):
         import openproject
