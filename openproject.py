@@ -15,6 +15,7 @@ import ctypes
 import json
 import re
 import ssl
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -225,6 +226,38 @@ def prs_do_texto(textos):
             if numero not in achados:
                 achados.append(numero)
     return achados
+
+
+# nomes dos campos personalizados lidos da tarefa. Ficam aqui, com variantes,
+# porque quem renomeia o campo no OpenProject nao avisa ninguem.
+CAMPO_ENTREGA = ("confirmar entrega ao cliente", "confirmar entrega")
+CAMPO_RAMOS = ("ramos para disponibilizacao", "ramos para disponibilizacao dos ajustes")
+PREFIXO_RAMOS = "ramos para disponibiliza"
+
+
+def _chave_campo(nome):
+    """Nome de campo comparavel: sem acento, sem pontuacao, minusculo."""
+    texto = unicodedata.normalize("NFKD", str(nome or ""))
+    texto = "".join(c for c in texto if not unicodedata.combining(c)).lower()
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", texto).split())
+
+
+def campo_por_nome(campos, alvos, prefixo=""):
+    """Valor do campo personalizado cujo nome casa com um dos alvos.
+
+    Compara sem acento, pontuacao nem caixa - o '?' de 'Confirmar entrega ao
+    cliente?' nao pode decidir se o campo e achado. Devolve None se nenhum casa,
+    que e diferente de achar o campo vazio.
+    """
+    procurados = [_chave_campo(a) for a in alvos]
+    achado = None
+    for nome, valor in (campos or {}).items():
+        chave = _chave_campo(nome)
+        if chave in procurados:
+            return valor
+        if prefixo and achado is None and chave.startswith(_chave_campo(prefixo)):
+            achado = valor
+    return achado
 
 
 def valor_do_campo(wp, chave):

@@ -60,6 +60,7 @@ RODAPE_LEGENDA = (
 )
 
 TODOS = "(todos)"
+TODAS = "(todas)"
 
 # coluna conflito
 NAO_CHECADO = "..."
@@ -619,6 +620,9 @@ def main():
             "dias_parado": dias_parado_var.get().strip() or "7",
             "conta": conta_var.get(),
             "producao_ciclo": prod_c_var.get().strip(),
+            "homologacao": homo_c_var.get().strip(),
+            "entrega_filtro": entrega_var.get(),
+            "versao_filtro": versao_var.get(),
         })
         save_state(state)
 
@@ -796,8 +800,12 @@ def main():
 
     # ------------------------------------------------------------- aba Ciclo
     import ciclo as mod_ciclo
+    import excel
     import github_prs
-    from openproject import OpenProject, desproteger, titulo_do_link
+    from openproject import (
+        CAMPO_ENTREGA, CAMPO_RAMOS, PREFIXO_RAMOS, OpenProject, campo_por_nome,
+        desproteger, titulo_do_link,
+    )
 
     ciclo_cache = {"linhas": [], "tipos": [], "status": [], "fechados": [], "usuario": ""}
     ciclo_dados = []
@@ -859,6 +867,12 @@ def main():
     campo_prod_c.grid(row=3, column=3, sticky="w")
     dica(campo_prod_c, prod_c_var, "release-2601")
 
+    tk.Label(topo_c, text="Branch de homologacao").grid(row=4, column=0, sticky="w", pady=2)
+    homo_c_var = tk.StringVar(value=state.get("homologacao", ""))
+    campo_homo_c = tk.Entry(topo_c, textvariable=homo_c_var, width=26)
+    campo_homo_c.grid(row=4, column=1, sticky="w", pady=2)
+    dica(campo_homo_c, homo_c_var, "release-2602 (vazio = nao usa)")
+
     tk.Label(topo_c, text="Parado apos (dias)").grid(row=4, column=2, sticky="e", padx=(12, 6))
     dias_parado_var = tk.StringVar(value=str(state.get("dias_parado", "7")))
     tk.Entry(topo_c, textvariable=dias_parado_var, width=5).grid(row=4, column=3, sticky="w")
@@ -893,6 +907,27 @@ def main():
     btn_status.pack(side="left")
     btn_abrir_wp = tk.Button(btns_c, text="Abrir tarefa / PR", width=16, state="disabled")
     btn_abrir_wp.pack(side="left", padx=6)
+    btn_excel = tk.Button(btns_c, text="Exportar Excel...", width=16, state="disabled")
+    btn_excel.pack(side="left")
+
+    # filtros sobre o resultado ja carregado: trocar filtro nao refaz consulta
+    filtros_c = tk.Frame(aba_ciclo, padx=10, pady=4)
+    filtros_c.pack(fill="x")
+    tk.Label(filtros_c, text="Filtrar:  entrega ao cliente").pack(side="left")
+    entrega_var = tk.StringVar(value=state.get("entrega_filtro", TODOS))
+    entrega_combo = ttk.Combobox(filtros_c, textvariable=entrega_var, width=10, state="readonly",
+                                 values=[TODOS, "Sim", "Nao"])
+    entrega_combo.pack(side="left", padx=(6, 0))
+    if entrega_var.get() not in (TODOS, "Sim", "Nao"):
+        entrega_var.set(TODOS)
+    tk.Label(filtros_c, text="versao pedida (ramos)").pack(side="left", padx=(14, 0))
+    versao_var = tk.StringVar(value=state.get("versao_filtro", TODAS))
+    versao_combo = ttk.Combobox(filtros_c, textvariable=versao_var, width=12, state="readonly",
+                                values=[TODAS])
+    versao_combo.pack(side="left", padx=(6, 0))
+    tk.Label(filtros_c, fg="#666", text=(
+        "so tarefas que pedem aquela versao em 'ramos para disponibilizacao'"
+    )).pack(side="left", padx=(10, 0))
 
     legenda_c = tk.Frame(aba_ciclo, padx=10, pady=6)
     legenda_c.pack(fill="x")
@@ -902,25 +937,32 @@ def main():
                  font=("TkDefaultFont", 9, "bold")).grid(row=i, column=1, sticky="w", padx=(8, 6))
         tk.Label(legenda_c, text="= " + texto, fg="#444").grid(row=i, column=2, sticky="w")
     tk.Label(legenda_c, fg="#0a4fb0", text=(
-        "Clique na celula de PR PRINCIPAL / PR PRODUCAO / PR OUTRAS BRANCHES para abrir "
-        "o PR no navegador."
+        "Clique na celula de PR PRINCIPAL / PR PRODUCAO / PR HOMOLOGACAO / PR OUTRAS "
+        "BRANCHES para abrir o PR no navegador."
     )).grid(row=len(mod_ciclo.LEGENDA_CICLO), column=1, columnspan=2, sticky="w",
             padx=(8, 0), pady=(2, 0))
     tk.Label(legenda_c, fg="#777", text=(
+        "PENDENTE EM diz a branch e como esta cada uma. 'nao solicitado' = a tarefa nao pediu "
+        "aquela versao, entao a ausencia ali nao e pendencia."
+    )).grid(row=len(mod_ciclo.LEGENDA_CICLO) + 1, column=1, columnspan=2, sticky="w",
+            padx=(8, 0))
+    tk.Label(legenda_c, fg="#777", text=(
         "So enxerga PR ABERTO: o que ja foi mergeado sai do radar, e por isso a pendencia diz "
         "'sem PR aberto para producao', nao 'nao esta na producao'."
-    )).grid(row=len(mod_ciclo.LEGENDA_CICLO) + 1, column=1, columnspan=2, sticky="w",
+    )).grid(row=len(mod_ciclo.LEGENDA_CICLO) + 2, column=1, columnspan=2, sticky="w",
             padx=(8, 0))
 
     corpo_c = tk.Frame(aba_ciclo, padx=10, pady=8)
     corpo_c.pack(fill="both", expand=True)
-    colunas_c = ("pendencia", "tarefa", "tipo", "status", "principal", "producao",
-                 "outros", "build", "dias", "assunto")
-    larguras_c = (150, 65, 95, 105, 165, 165, 105, 105, 40, 300)
+    colunas_c = ("pendencia", "pendente_em", "tarefa", "tipo", "status", "entrega", "ramos",
+                 "principal", "producao", "homologacao", "outros", "build", "dias", "assunto")
+    larguras_c = (150, 210, 65, 95, 105, 55, 85, 165, 165, 165, 105, 105, 40, 260)
     titulos_c = {"principal": "PR PRINCIPAL", "producao": "PR PRODUCAO",
-                 "outros": "PR OUTRAS BRANCHES", "build": "BUILD (X5)",
-                 "dias": "DIAS", "pendencia": "PENDENCIA", "tarefa": "TAREFA",
-                 "tipo": "TIPO", "status": "STATUS", "assunto": "ASSUNTO"}
+                 "homologacao": "PR HOMOLOGACAO", "outros": "PR OUTRAS BRANCHES",
+                 "build": "BUILD (X5)", "dias": "DIAS", "pendencia": "PENDENCIA",
+                 "pendente_em": "PENDENTE EM", "tarefa": "TAREFA", "tipo": "TIPO",
+                 "status": "STATUS", "entrega": "ENTREGA?", "ramos": "RAMOS",
+                 "assunto": "ASSUNTO"}
     grid_c = ttk.Treeview(corpo_c, columns=colunas_c, show="headings", selectmode="extended", height=13)
     for col, larg in zip(colunas_c, larguras_c):
         grid_c.heading(col, text=titulos_c.get(col, col.upper()))
@@ -943,7 +985,10 @@ def main():
 
     grid_c.bind("<<TreeviewSelect>>", on_select_c)
 
-    COLUNAS_LINK = {"#5": "principal", "#6": "producao", "#7": "outros"}
+    # numero da coluna -> chave de urls; calculado, para nao quebrar quando a
+    # ordem das colunas muda
+    COLUNAS_LINK = {"#%d" % (colunas_c.index(nome) + 1): nome
+                    for nome in ("principal", "producao", "homologacao", "outros")}
 
     def _links_da_celula(evento):
         """URLs do PR sob o cursor, ou [] se a celula nao for de PR."""
@@ -975,43 +1020,77 @@ def main():
         numeros = re.findall(r"\d+", texto or "")
         return int(numeros[0]) if numeros else -1
 
+    def _entrega(linha):
+        if not linha.get("tem_entrega"):
+            return "-"
+        return "sim" if linha["entrega"] else "nao"
+
     ordem_ciclo = {"col": None, "desc": False}
     CHAVES_CICLO = {
         "pendencia": lambda l: (mod_ciclo.ORDEM_CICLO.get(l["pendencia"], 9), -l["idade"]),
+        "pendente_em": lambda l: str(l["pendente_em"]).lower(),
         "tarefa": lambda l: int(l["tarefa"]) if str(l["tarefa"]).isdigit() else -1,
         "tipo": lambda l: str(l["tipo"]).lower(),
         "status": lambda l: str(l["status_wp"]).lower(),
+        "entrega": lambda l: _entrega(l),
+        "ramos": lambda l: ",".join(l["versoes"]),
         "principal": lambda l: _num_pr(l["pr_principal"]),
         "producao": lambda l: _num_pr(l["pr_producao"]),
+        "homologacao": lambda l: _num_pr(l["pr_homologacao"]),
         "outros": lambda l: _num_pr(l["pr_outros"]),
         "build": lambda l: str(l["build"] or "").lower(),
         "dias": lambda l: l["idade"],
         "assunto": lambda l: str(l["assunto"]).lower(),
     }
 
-    def render_ciclo():
+    def linhas_filtradas():
+        """Filtros de tela: autor, entrega ao cliente e versao pedida nos ramos.
+
+        Todos sobre o resultado ja carregado - trocar filtro nao refaz consulta.
+        """
         autor = autor_c_var.get()
-        linhas = [l for l in ciclo_cache["linhas"]
-                  if autor == TODOS or autor in l["autores"]]
+        entrega = entrega_var.get()
+        versao = versao_var.get()
+        linhas = []
+        for linha in ciclo_cache["linhas"]:
+            if autor != TODOS and autor not in linha["autores"]:
+                continue
+            if entrega == "Sim" and not linha["entrega"]:
+                continue
+            if entrega == "Nao" and linha["entrega"]:
+                continue
+            if versao != TODAS and versao not in linha["versoes"]:
+                continue
+            linhas.append(linha)
+        return linhas
+
+    def render_ciclo():
+        linhas = linhas_filtradas()
         aplicar_ordem(linhas, ordem_ciclo, CHAVES_CICLO)
         ciclo_dados[:] = linhas
         grid_c.delete(*grid_c.get_children())
         for i, l in enumerate(linhas):
             grid_c.insert("", "end", iid=str(i), tags=(l["pendencia"],), values=(
-                l["pendencia"], l["tarefa"], l["tipo"][:14], l["status_wp"][:16],
-                l["pr_principal"], l["pr_producao"], l["pr_outros"][:16],
-                l["build"] or "-", l["idade"], l["assunto"],
+                l["pendencia"], l["pendente_em"], l["tarefa"], l["tipo"][:14],
+                l["status_wp"][:16], _entrega(l), ", ".join(l["versoes"]) or "-",
+                l["pr_principal"], l["pr_producao"], l["pr_homologacao"],
+                l["pr_outros"][:16], l["build"] or "-", l["idade"], l["assunto"],
             ))
+        btn_excel.config(state="normal" if linhas else "disabled")
         contagem = {}
         for l in linhas:
             contagem[l["pendencia"]] = contagem.get(l["pendencia"], 0) + 1
-        resumo = ("%d tarefa(s): %d pode(m) mergear, %d sem PR de producao, "
-                  "%d aguardando aprovacao, %d sem build, %d parada(s)." % (
+        resumo = ("%d tarefa(s): %d pode(m) mergear, %d sem PR de producao, %d falta(m) em "
+                  "outra versao, %d aguardando aprovacao, %d sem build, %d parada(s)." % (
                       len(linhas), contagem.get(mod_ciclo.MERGEAR, 0),
-                      contagem.get(mod_ciclo.SEM_PROD, 0), contagem.get(mod_ciclo.APROVAR, 0),
+                      contagem.get(mod_ciclo.SEM_PROD, 0), contagem.get(mod_ciclo.SEM_VERSAO, 0),
+                      contagem.get(mod_ciclo.APROVAR, 0),
                       contagem.get(mod_ciclo.SEM_BUILD, 0), contagem.get(mod_ciclo.PARADO, 0)))
         status.config(text=resumo, fg="#333")
         return resumo
+
+    entrega_combo.bind("<<ComboboxSelected>>", lambda _e: render_ciclo())
+    versao_combo.bind("<<ComboboxSelected>>", lambda _e: render_ciclo())
 
     ligar_ordenacao(grid_c, colunas_c, titulos_c, ordem_ciclo, CHAVES_CICLO,
                     lambda: render_ciclo())
@@ -1082,6 +1161,10 @@ def main():
         if autor_c_var.get() not in [TODOS] + autores:
             autor_c_var.set(resultado_ciclo.get("usuario") if
                             resultado_ciclo.get("usuario") in autores else TODOS)
+        versoes = resultado_ciclo.get("versoes_vistas", [])
+        versao_combo["values"] = [TODAS] + versoes
+        if versao_var.get() not in [TODAS] + versoes:
+            versao_var.set(TODAS)
         log("")
         log(render_ciclo())
         if not state.get("tipos_exigem"):
@@ -1151,10 +1234,23 @@ def main():
                         "fechado": situacao in fechados,
                         "assunto": wp.get("subject", ""),
                         "build": build,
+                        "entrega": campo_por_nome(campos, CAMPO_ENTREGA),
+                        "ramos": campo_por_nome(campos, CAMPO_RAMOS, PREFIXO_RAMOS) or "",
                     }
                 if tarefas:
                     exemplo = list(tarefas.values())[0]
                     log("  exemplo: tipo=%s status=%s" % (exemplo["tipo"], exemplo["status"]))
+                pedem = [(n, d) for n, d in tarefas.items()
+                         if mod_ciclo.verdadeiro(d.get("entrega"))]
+                log("  %d tarefa(s) com 'Confirmar entrega ao cliente?' marcado" % len(pedem))
+                for numero, dados in pedem[:8]:
+                    log("    %s: ramos '%s' -> versoes %s" % (
+                        numero, dados.get("ramos") or "-",
+                        ", ".join(mod_ciclo.versoes_do_texto(dados.get("ramos"))) or "nenhuma"))
+                sem_campo = [n for n, d in tarefas.items() if d.get("entrega") is None]
+                if len(sem_campo) == len(tarefas) and tarefas:
+                    log("  ATENCAO: nenhuma tarefa trouxe o campo 'Confirmar entrega ao "
+                        "cliente?'. Confira o nome do campo no OpenProject.")
             else:
                 log("OpenProject nao configurado: o tipo sai do titulo do PR.")
 
@@ -1165,14 +1261,30 @@ def main():
             log("  %d aprovado(s), %d com pedido de ajuste" % (
                 aprovados, sum(1 for v in revisoes.values() if v == "ajustes")))
 
-            # historico local: separa "mergeado" de "PR nao aberto"
             nome_prod = prod_c_var.get().strip() or prod_var.get().strip() or "producao"
             nome_main = main_var.get().strip() or "master"
-            historico = {"principal": None, "producao": None}
+            nome_homo = homo_c_var.get().strip()
+            modelo = mod_ciclo.modelo_de_branch(nome_prod, nome_homo)
+
+            # toda branch que alguma tarefa exige tem historico lido: sem isso
+            # nao da para dizer que o commit ja esta la
+            alvos = [n for n in (nome_main, nome_prod, nome_homo) if n]
+            for dados in tarefas.values():
+                if not mod_ciclo.verdadeiro(dados.get("entrega")):
+                    continue
+                for versao in mod_ciclo.versoes_do_texto(dados.get("ramos")):
+                    nome = mod_ciclo.branch_da_versao(versao, modelo, (nome_prod, nome_homo))
+                    if not any(mod_ciclo.mesma_branch(nome, ja) for ja in alvos):
+                        alvos.append(nome)
+            log("")
+            log("--- branches analisadas: %s ---" % ", ".join(alvos))
+
+            # historico local: separa "mergeado" de "PR nao aberto", por branch
+            historico = {}
             if locais:
                 log("")
                 log("--- historico local (para saber o que ja foi mergeado) ---")
-                for lado, branch in (("principal", nome_main), ("producao", nome_prod)):
+                for branch in alvos:
                     numeros = set()
                     achou = False
                     for nome_repo, caminho in locais.items():
@@ -1184,8 +1296,7 @@ def main():
                         numeros |= set(ops)
                         achou = True
                         log("  %s %s: %d commits" % (nome_repo, ref, total))
-                    if achou:
-                        historico[lado] = numeros
+                    historico[branch] = numeros if achou else None
             else:
                 log("")
                 log("Sem clone local informado: nao da para distinguir 'mergeado' de "
@@ -1195,6 +1306,7 @@ def main():
                 prs, tarefas, nome_prod, nome_main,
                 state.get("tipos_exigem", []), state.get("status_libera", []), int(dias_p),
                 revisoes=revisoes, historico=historico,
+                base_homologacao=nome_homo, modelo_branch=modelo,
             )
             resultado_ciclo["linhas"] = linhas
             resultado_ciclo["autores"] = sorted({p["autor"] for p in prs if p["autor"]})
@@ -1203,6 +1315,9 @@ def main():
             resultado_ciclo["status_vistos"] = sorted(
                 {l["status_wp"] for l in linhas if l["status_wp"] != "-"})
             resultado_ciclo["status_fechados"] = sorted(fechados) if url_op and token else []
+            resultado_ciclo["versoes_vistas"] = sorted(
+                {v for l in linhas for v in l["versoes"]})
+            resultado_ciclo["branches"] = alvos
 
         in_thread(work, "Ciclo carregado.", depois=concluir_ciclo)
 
@@ -1215,10 +1330,53 @@ def main():
                 if pr.get("url"):
                     webbrowser.open(pr["url"], new=2)
 
+    def do_excel():
+        """Exporta o que esta na tela: uma aba igual a grade e uma por branch.
+
+        A aba longa (uma linha por tarefa x branch) e a que responde 'o que falta
+        na 2602?' com um filtro do Excel, sem ler texto de celula.
+        """
+        linhas = list(ciclo_dados)
+        if not linhas:
+            status.config(text="Nada carregado para exportar.", fg="#c00")
+            return
+        caminho = filedialog.asksaveasfilename(
+            parent=root, title="Exportar analise do ciclo",
+            defaultextension=".xlsx", filetypes=[("Planilha do Excel", "*.xlsx")],
+            initialfile="ciclo-backport.xlsx")
+        if not caminho:
+            return
+        cabecalho = [titulos_c.get(c, c.upper()) for c in colunas_c]
+        largas = {"pendente_em": 46, "assunto": 60, "principal": 30, "producao": 30,
+                  "homologacao": 30, "outros": 22, "pendencia": 22, "status": 16,
+                  "tipo": 14, "ramos": 12, "build": 18}
+        larguras = [largas.get(c, 10) for c in colunas_c]
+        tabela = [[
+            l["pendencia"], l["pendente_em"], l["tarefa"], l["tipo"], l["status_wp"],
+            _entrega(l), ", ".join(l["versoes"]) or "-", l["pr_principal"],
+            l["pr_producao"], l["pr_homologacao"], l["pr_outros"], l["build"] or "-",
+            l["idade"], l["assunto"],
+        ] for l in linhas]
+        try:
+            excel.escrever(caminho, [
+                ("Tarefas", cabecalho, tabela, larguras),
+                ("Pendencias por branch", list(mod_ciclo.COLUNAS_LONGO),
+                 mod_ciclo.linhas_por_branch(linhas),
+                 [10, 14, 16, 16, 12, 30, 10, 22, 12, 12, 60]),
+            ])
+        except Exception as exc:
+            status.config(text="Nao consegui gravar a planilha: %r" % (exc,), fg="#c00")
+            log("Falha ao exportar: %r" % (exc,))
+            return
+        status.config(text="Exportado: %s" % caminho, fg="#0a7a0a")
+        log("Planilha gravada em %s (%d tarefa(s), %d linha(s) por branch)." % (
+            caminho, len(tabela), len(mod_ciclo.linhas_por_branch(linhas))))
+
     autor_c_combo.bind("<<ComboboxSelected>>", lambda _e: (salvar(), render_ciclo()))
     btn_carregar.config(command=do_carregar_ciclo)
     btn_tipos.config(command=do_tipos)
     btn_status.config(command=do_status)
+    btn_excel.config(command=do_excel)
     btn_abrir_wp.config(command=do_abrir_ciclo)
     grid_c.bind("<Double-1>", lambda _e: do_abrir_ciclo())
 

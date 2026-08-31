@@ -1,14 +1,15 @@
 # Ferramentas de backport
 
-Duas ferramentas de janela, para quem mantém uma **branch de produção** separada da branch
-principal e precisa levar correções de uma para a outra.
+Duas ferramentas de janela, para quem mantém **branches de versão** (produção, homologação)
+separadas da branch principal e precisa levar correções de uma para as outras.
 
 O problema que elas resolvem: você mandou duas correções para a `master`, portou só uma para
-a branch de produção e descobriu a que faltou pelo cliente reclamando.
+a branch de produção e descobriu a que faltou pelo cliente reclamando. E a variante pior: a
+correção foi para a produção, mas ninguém levou para a versão que o cliente ia receber.
 
 | Ferramenta | Para quê |
 | ---------- | -------- |
-| **BackportCheck** | **Descobrir** o que está na principal e ainda não chegou na produção — e portar dali mesmo. |
+| **BackportCheck** | **Descobrir** o que está na principal e ainda não chegou nas branches de versão — e em qual delas falta — e portar dali mesmo. |
 | **CherryPickPush** | **Portar** quando você já sabe o commit e o nome da branch. |
 
 O trabalho com git é puro `git` — sem API e sem servidor. Só a aba **Ciclo** do BackportCheck
@@ -133,15 +134,17 @@ Ela cruza duas fontes e não depende do `gh` CLI:
   próprio git (`git credential fill`), ou seja, a mesma que o seu `git push` já usa: nada é
   digitado, nada é guardado por esta ferramenta.
 - **OpenProject** (opcional) — os work packages **dos números de tarefa encontrados nos PRs**,
-  buscados pelo filtro `id` da API v3, de onde saem o tipo, o status e o campo de build. Sem ele
-  a aba funciona igual, deduzindo o tipo do título do PR. Campos personalizados são lidos tanto
-  do corpo quanto de `_links` — listas e opções só aparecem lá.
+  buscados pelo filtro `id` da API v3, de onde saem o tipo, o status, o campo de build e os dois
+  campos que dizem em quais versões a tarefa tem de ser disponibilizada. Sem ele a aba funciona
+  igual, deduzindo o tipo do título do PR. Campos personalizados são lidos tanto do corpo quanto
+  de `_links` — listas e opções só aparecem lá.
 
 | Situação | Significa | O que fazer |
 | -------- | --------- | ----------- |
 | **PODE MERGEAR** (verde) | a tarefa está num status de **concluída** e o PR continua aberto | mergear — é trabalho pronto parado |
-| **SEM PR DE PRODUCAO** (vermelho) | o tipo exige produção e não há PR aberto para essa branch | abrir o backport (a aba git faz isso) |
-| **AGUARDA APROVACAO** (azul) | existe PR aberto para a produção esperando revisão há N dias | cobrar revisão |
+| **SEM PR DE PRODUCAO** (vermelho) | a produção é obrigatória para essa tarefa e não há PR aberto para essa branch | abrir o backport (a aba git faz isso) |
+| **FALTA EM OUTRA VERSAO** (vinho) | falta numa **outra** branch obrigatória — homologação, ou uma versão pedida no card | abrir o backport daquela versão |
+| **AGUARDA APROVACAO** (azul) | existe PR aberto para uma branch de versão esperando revisão há N dias | cobrar revisão |
 | **FALTA A BUILD (X5)** (âmbar) | tarefa concluída, sem PR aberto, e o campo de build vazio | preencher a versão no card |
 | **PARADO** (laranja) | PR aberto sem nenhuma atualização há mais dias que o limite | decidir: retomar ou fechar |
 | **OK** (cinza) | nada a fazer pelo que dá para ver dos PRs abertos | — |
@@ -153,10 +156,49 @@ intermediários (um "teste aprovado", por exemplo) que a instância não conside
 Os PRs são agrupados por **número da tarefa**, tirado do nome do branch (`fb_123456_2601`) ou
 do título, então as duas pontas de uma mesma tarefa aparecem na mesma linha.
 
+### Quais branches são obrigatórias
+
+A pergunta "essa tarefa está pendente?" só tem resposta depois de "pendente **onde**?". Quem
+decide isso é uma função só — `branches_obrigatorias()` em `ciclo.py` — e todo o resto (as
+colunas, a pendência, o Excel) lê dela:
+
+| Regra | Branches que entram |
+| ----- | ------------------- |
+| toda tarefa, sempre | a **principal** (master) |
+| o tipo está marcado em **Tipos que exigem produção** | **produção** e **homologação** |
+| o card tem **Confirmar entrega ao cliente?** marcado | as versões escritas em **ramos para disponibilização**, qualquer que seja o tipo |
+
+Versão que a tarefa **não** pediu não é cobrada: a coluna daquela branch mostra
+`nao solicitado` em vez de `PR nao aberto`. É o que separa "falta portar" de "nunca foi para
+ser portado" — o caso de um card que pede só a 2602 e não a 2601.
+
+Nada aqui olha o *status* da tarefa para expandir branches: um card em "Desenvolvido" continua
+cobrado só na principal (e na produção, se o tipo dele exigir) até que o campo de entrega ao
+cliente diga o contrário.
+
+### O campo "ramos para disponibilização"
+
+O campo é texto livre e o preenchimento varia. O único padrão confiável são os **4 dígitos da
+versão**, e é só isso que a ferramenta lê — o separador não importa:
+
+| No card | Versões lidas |
+| ------- | ------------- |
+| `v2.2602` | 2602 |
+| `2602` | 2602 |
+| `2602 - 2601` | 2602, 2601 |
+| `2602, 2601` / `2602/2601` / `v2.2602 - v2.2601` | 2602, 2601 |
+| `próxima release` | nenhuma (não inventa branch) |
+
+Cada versão é convertida para o nome de branch **deste** repositório, e o formato sai das
+branches que você configurou: com produção `v2.2601`, o `2602` do card vira `v2.2602`; com
+produção `release-2601`, vira `release-2602`. Não existe `v2.` fixo no código. A coluna
+**RAMOS** mostra as versões já normalizadas — é a interpretação da ferramenta, dá para
+conferir de olho.
+
 ### O que cada lado diz
 
-As colunas **PR PRINCIPAL** e **PR PRODUCAO** não mostram só o número do PR — mostram a
-situação daquele lado, que é o que interessa para agir:
+As colunas **PR PRINCIPAL**, **PR PRODUCAO** e **PR HOMOLOGACAO** não mostram só o número do
+PR — mostram a situação daquele lado, que é o que interessa para agir:
 
 | Texto | Significa |
 | ----- | --------- |
@@ -168,10 +210,30 @@ situação daquele lado, que é o que interessa para agir:
 | `rascunho` | PR aberto como *draft* |
 | `PR nao aberto` | nada aberto e nada no histórico daquela branch |
 | `sem PR aberto` | nada aberto e **não havia clone local** para conferir o histórico |
+| `nao solicitado` | aquela branch **não é obrigatória** para essa tarefa |
 
 Para distinguir `mergeado` de `PR nao aberto` é preciso ter o **clone local** informado no
 campo Repositórios — é do histórico do git que sai essa resposta, não do GitHub. Sem clone,
-os dois casos viram `sem PR aberto`, que é honesto sobre o que se sabe.
+os dois casos viram `sem PR aberto`, que é honesto sobre o que se sabe. É também de lá que sai
+a resposta para "o commit já está na branch?": o histórico é lido **de cada branch obrigatória**,
+inclusive as que vieram do campo de ramos.
+
+### A coluna PENDENTE EM
+
+É a coluna que responde a pergunta que importa. Ela lista, branch por branch, o que ainda
+falta — e nada mais:
+
+```
+v2.2601: aguardando aprovacao (19d) #8030, v2.2602: PR nao aberto
+```
+
+Uma branch sai dessa lista quando a tarefa aparece no histórico dela (`mergeado`) ou quando ela
+não é obrigatória para essa tarefa. Se sobrar só `v2.2602: PR nao aberto`, a pendência da tarefa
+é exclusivamente a 2602.
+
+> Sem clone local a ferramenta não sabe o que já foi mergeado, então **toda** branch obrigatória
+> aparece em PENDENTE EM. Informe a pasta do clone no campo Repositórios e a coluna passa a
+> mostrar só o que realmente falta.
 
 **Clicar na célula de PR abre aquele PR no navegador** (o cursor vira mãozinha em cima das
 células que têm link). **BUILD (X5)** mostra o campo de build da tarefa.
@@ -195,23 +257,60 @@ Na ordem em que aparecem na tela:
 | **Token da API** | token pessoal do OpenProject (*Minha conta → Tokens de acesso*), **nunca** a sua senha. O botão **Onde pegar o token** abre essa página. Guardado cifrado nesta máquina. |
 | **Autor** | filtra por quem abriu o PR; a lista é preenchida pela carga. `(todos)` mostra o time inteiro. |
 | **Branch de producao** | contra qual branch o PR de produção é esperado (ex.: `release-2601`). Vazio, usa a da aba git. A comparação ignora maiúsculas. |
+| **Branch de homologacao** | a próxima versão (ex.: `release-2602`). **Vazio, a ferramenta se comporta exatamente como antes**: uma branch de versão só. |
 | **Query salva (id)** | **opcional.** O número que aparece na URL do gerenciador como `?query_id=1234` — a visão já filtrada do seu time, para trazer também tarefas que não têm PR aberto (é o que permite pegar o caso *FALTA A BUILD*). As tarefas dos PRs são buscadas pelo número, independente dela. |
 | **Parado apos (dias)** | quantos dias sem **nenhuma** atualização no PR para ele ser marcado como PARADO. |
 | **Conta do GitHub** | qual credencial usar (veja abaixo). |
+
+As duas branches de versão são campos — não há nome de versão escrito no código. Quando a
+produção virar a 2602, você troca os dois campos e nada mais.
 
 ### Os botões
 
 - **Carregar** — busca os PRs abertos e as tarefas, e monta a lista. É a ação principal da aba.
 - **Tipos que exigem producao...** — marque aqui os tipos (corretiva, dívida técnica, o que for
-  na sua casa) que precisam chegar na produção. **Sem nenhum marcado, ninguém é cobrado por
-  falta de PR de produção** — o log avisa quando isso acontece.
+  na sua casa) que precisam chegar nas branches de versão. **Sem nenhum marcado, ninguém é
+  cobrado por falta de PR de produção** — o log avisa quando isso acontece.
 - **Status que liberam merge...** — status intermediários que também contam como "pronto"
   (os fechados na instância já contam sozinhos).
 - **Abrir tarefa / PR** — abre no navegador a tarefa selecionada e os PRs dela. Duplo clique
   na linha faz o mesmo.
+- **Exportar Excel...** — grava o que está na tela (ver abaixo).
 
 Os dois botões de configuração só listam valores depois da primeira carga — eles mostram o que
 existe na sua base, não uma lista fixa.
+
+### Filtros
+
+Ficam abaixo dos botões e agem **sobre o resultado já carregado** — trocar filtro não refaz
+consulta nenhuma, igual ao filtro de Autor:
+
+| Filtro | Para quê |
+| ------ | -------- |
+| **entrega ao cliente** | `Sim` / `Nao` / `(todos)`. `Sim` deixa na tela só as tarefas que pediram disponibilização em outras versões — a fila de backport do momento. |
+| **versao pedida (ramos)** | `(todas)` ou uma das versões encontradas na carga. Mostra só as tarefas cujo campo de ramos cita aquela versão — "o que ainda falta para a 2602?" em um clique. |
+
+A lista de versões é preenchida pelo que apareceu na sua base, não por uma lista fixa. O filtro
+de versão olha o que o **card pediu**; para saber se aquela versão já recebeu a tarefa, a
+resposta está na coluna da branch e em PENDENTE EM.
+
+### Exportação para Excel
+
+O botão **Exportar Excel...** grava um `.xlsx` com duas abas, ambas com filtro automático e
+cabeçalho congelado:
+
+- **Tarefas** — exatamente as colunas da tela, na mesma ordem, respeitando os filtros e a
+  ordenação ativos no momento da exportação;
+- **Pendencias por branch** — uma linha por **tarefa × branch**, com `BRANCH`,
+  `OBRIGATORIA`, `SITUACAO` e `PENDENTE` em colunas próprias.
+
+A segunda aba existe porque é ela que responde por filtro, e não por leitura de texto:
+`BRANCH = v2.2602` + `PENDENTE = sim` é a lista do que falta naquela versão. Uma tarefa
+`master OK / v2.2601 aguardando aprovação / v2.2602 sem PR` vira três linhas, e nenhuma
+informação fica escondida dentro de uma célula.
+
+O arquivo é escrito sem biblioteca externa (`excel.py`, ~100 linhas de zip + XML), para o
+executável continuar sendo só o Python embutido.
 
 ### Qual conta do GitHub ele usa
 
@@ -234,6 +333,17 @@ Quais tipos exigem produção e quais status liberam o merge são **escolhidos p
 botões que listam os valores encontrados na sua própria base — nada de processo de empresa
 nenhuma vem embutido no código. A comparação de branch ignora maiúsculas, porque a API do
 GitHub costuma devolver o nome da branch em minúsculas onde o git local mostra em maiúsculas.
+
+Os dois campos personalizados lidos do gerenciador são achados **pelo nome**, ignorando acento,
+pontuação e caixa (`Confirmar entrega ao cliente?` casa com `confirmar entrega ao cliente`):
+
+| Campo no card | Tipo | Efeito |
+| ------------- | ---- | ------ |
+| `Confirmar entrega ao cliente?` | booleano | marcado, liga as branches do campo abaixo |
+| `Ramos para disponibilização` | texto | as versões (4 dígitos) que a tarefa tem de receber |
+
+Se nenhuma tarefa trouxer o campo booleano, o log avisa — é o sintoma de campo renomeado na
+instância. Sem os dois campos a aba funciona como antes, só com a regra de tipo.
 
 O botão **Onde pegar o token** abre a página de tokens da sua própria instância
 (`/my/access_token`) no navegador — preencha a URL antes de clicar. Você cola o token **uma
@@ -314,9 +424,23 @@ python -m PyInstaller --noconfirm --onefile --noconsole --name BackportCheck bac
 python -m PyInstaller --noconfirm --onefile --noconsole --name CherryPickPush cherrypick_tool.py
 ```
 
-`backport_check.py` importa o núcleo git de `cherrypick_tool.py`; os dois arquivos precisam
-estar na mesma pasta. Os últimos valores digitados ficam em `%APPDATA%\cherrypick-tool\`
-(`backport.json` e `last.json`).
+`backport_check.py` importa o núcleo git de `cherrypick_tool.py` e mais `ciclo.py`,
+`github_prs.py`, `openproject.py` e `excel.py`; todos precisam estar na mesma pasta. Nenhuma
+dependência externa — o PyInstaller acha os módulos sozinho. Os últimos valores digitados ficam
+em `%APPDATA%\cherrypick-tool\` (`backport.json` e `last.json`).
+
+## Testes
+
+A regra do ciclo (branches obrigatórias, leitura do campo de ramos, situação por branch,
+formato longo e o escritor de xlsx) é testada sem nada instalado além do Python:
+
+```
+python -m unittest -v
+```
+
+Boa parte dos testes existe para travar o comportamento **antigo** — uma branch de versão só,
+sem os campos do gerenciador. Se alguma alteração futura mudar o que a ferramenta já respondia,
+esses testes quebram primeiro.
 
 ## Licença
 
