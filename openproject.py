@@ -78,6 +78,15 @@ def desproteger(texto_base64):
         return ""
 
 
+def _mensagem_do_erro(exc):
+    """Mensagem que a propria API mandou no corpo do erro, quando manda."""
+    try:
+        corpo = json.loads(exc.read().decode("utf-8", "replace"))
+    except Exception:
+        return ""
+    return corpo.get("message") or corpo.get("errorIdentifier") or ""
+
+
 class OpenProject(object):
     """GETs na API v3. Sem escrita, por decisão de projeto."""
 
@@ -112,7 +121,10 @@ class OpenProject(object):
                 raise StepError("Sem permissão (403) para esse recurso no OpenProject.")
             if exc.code == 404:
                 raise StepError("Não encontrado (404): %s" % url)
-            raise StepError("OpenProject respondeu %s em %s" % (exc.code, url))
+            erro = StepError("OpenProject respondeu %s (%s) em %s"
+                             % (exc.code, _mensagem_do_erro(exc) or "sem detalhe", url))
+            erro.codigo_http = exc.code
+            raise erro
         except urllib.error.URLError as exc:
             raise StepError("Não foi possível falar com o OpenProject (%s). "
                             "Confira a URL, a rede/VPN e o certificado." % exc.reason)
@@ -182,18 +194,38 @@ class OpenProject(object):
 
         Usa o filtro `id` da API v3, o que dispensa query salva e cobre tarefa
         de qualquer projeto - o que interessa é o número que veio do PR.
+
+        Devolve (elementos, ignorados). O filtro `id` valida cada valor contra o
+        que a SUA conta pode ver, então um único número apagado ou de projeto sem
+        permissão reprova o lote inteiro com 400 - por isso o lote recusado é
+        dividido até sobrar o culpado, que sai em `ignorados`.
         """
-        achados = []
+        achados, ignorados = [], []
         ids = [str(i) for i in ids if str(i).strip()]
         for inicio in range(0, len(ids), tamanho_lote):
-            lote = ids[inicio:inicio + tamanho_lote]
-            filtros = json.dumps([{"id": {"operator": "=", "values": lote}}])
-            consulta = urllib.parse.urlencode({
-                "filters": filtros, "pageSize": str(len(lote)),
-            })
+            self._buscar_por_id(ids[inicio:inicio + tamanho_lote], achados, ignorados)
+        return achados, sorted(ignorados, key=lambda n: (len(n), n))
+
+    def _buscar_por_id(self, lote, achados, ignorados):
+        if not lote:
+            return
+        filtros = json.dumps([{"id": {"operator": "=", "values": lote}}])
+        consulta = urllib.parse.urlencode({
+            "filters": filtros, "pageSize": str(len(lote)),
+        })
+        try:
             dados = self._get("/api/v3/work_packages?" + consulta)
-            achados.extend(dados.get("_embedded", {}).get("elements", []))
-        return achados
+        except StepError as exc:
+            if getattr(exc, "codigo_http", None) != 400:
+                raise
+            if len(lote) == 1:
+                ignorados.extend(lote)
+                return
+            meio = len(lote) // 2
+            self._buscar_por_id(lote[:meio], achados, ignorados)
+            self._buscar_por_id(lote[meio:], achados, ignorados)
+            return
+        achados.extend(dados.get("_embedded", {}).get("elements", []))
 
     def campos_customizados(self, wp, nomes):
         """{nome legível: valor} dos custom fields preenchidos.

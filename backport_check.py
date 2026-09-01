@@ -1404,8 +1404,11 @@ def main():
                 # os números que interessam são os das tarefas com PR aberto;
                 # a query salva é só um complemento opcional
                 numeros = sorted({mod_ciclo.tarefa_do_pr(p) for p in prs if mod_ciclo.tarefa_do_pr(p)})
-                wps = cliente.work_packages_por_id(numeros)
+                wps, ignorados = cliente.work_packages_por_id(numeros)
                 log("  %d tarefa(s) dos PRs abertos, %d encontrada(s)" % (len(numeros), len(wps)))
+                if ignorados:
+                    log("  %d numero(s) que a sua conta nao ve (tarefa apagada ou projeto "
+                        "sem permissao), ignorado(s): %s" % (len(ignorados), ", ".join(ignorados)))
                 if projeto:
                     # com projeto na URL a lista deixa de sair dos PRs abertos: o
                     # que importa e a tarefa, tenha PR aberto ou nao
