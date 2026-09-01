@@ -456,15 +456,36 @@ A URL web vem de `git remote get-url origin` — aceita `https://` e `git@host:o
 
 ## Build
 
-Python 3.11 e PyInstaller 6.22:
+Python 3.11 e PyInstaller 6.22. Gerar os dois é um comando — duplo clique em
+`gerar-exes.bat`, ou:
 
 ```
-python -m PyInstaller --noconfirm --onefile --noconsole --name BackportCheck backport_check.py
+python gerar_exes.py
+```
+
+Ele gera pelos `.spec` versionados, **prova pelo bytecode** que cada módulo embutido
+corresponde ao `.py` do disco (data nova não é prova: build com cache ou fonte errado
+editado dá exe de hoje com comportamento velho) e avisa se `dist/` ficou com alteração
+não commitada — gerar não publica, os exes são versionados. Sai com código 1 se algo não
+confere. Para só conferir os exes que já existem, sem gerar:
+
+```
+python gerar_exes.py --verificar
+```
+
+Feche os executáveis antes: o PyInstaller não sobrescreve exe aberto (o script checa e
+avisa). Se preferir na mão, sem o script:
+
+```
+python -m PyInstaller --noconfirm BackportCheck.spec
 ```
 
 ```
-python -m PyInstaller --noconfirm --onefile --noconsole --name CherryPickPush cherrypick_tool.py
+python -m PyInstaller --noconfirm CherryPickPush.spec
 ```
+
+`pyinstaller` solto pode não estar no PATH quando instalado com `pip install --user`;
+`python -m PyInstaller` funciona nos dois casos.
 
 `backport_check.py` importa o núcleo git de `cherrypick_tool.py` e mais `ciclo.py`,
 `github_prs.py`, `openproject.py` e `excel.py`; todos precisam estar na mesma pasta. Nenhuma
