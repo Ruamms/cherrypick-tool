@@ -657,7 +657,6 @@ def main():
             "op_url": op_url_var.get().strip(),
             "query": query_var.get().strip(),
             "token_cifrado": _proteger(token_var.get().strip()),
-            "autor_ciclo": "" if autor_c_var.get() == TODOS else autor_c_var.get(),
             "atribuido_ciclo": ("" if atribuido_var.get() == TODOS
                                 else atribuido_var.get()),
             "dias_parado": dias_parado_var.get().strip() or "7",
@@ -937,9 +936,9 @@ def main():
            row=3, column=0, sticky="w", pady=2)
     pessoas_c = tk.Frame(topo_c)
     pessoas_c.grid(row=3, column=1, sticky="w", pady=2)
-    autor_c_var = tk.StringVar(value=state.get("autor_ciclo", "") or TODOS)
+    autor_c_var = tk.StringVar(value=TODOS)
     autor_c_combo = ttk.Combobox(pessoas_c, textvariable=autor_c_var, width=24, state="readonly")
-    autor_c_combo["values"] = [TODOS] + ([state["autor_ciclo"]] if state.get("autor_ciclo") else [])
+    autor_c_combo["values"] = [TODOS]
     autor_c_combo.pack(side="left")
     # rótulo aqui é criado na mão: 'rotulo' posiciona por grid, e esta linha é pack
     lbl_atribuido = tk.Label(pessoas_c, text="Atribuída a")
@@ -1398,8 +1397,7 @@ def main():
         autores = resultado_ciclo.get("autores", [])
         autor_c_combo["values"] = [TODOS] + autores
         if autor_c_var.get() not in [TODOS] + autores:
-            autor_c_var.set(resultado_ciclo.get("usuario") if
-                            resultado_ciclo.get("usuario") in autores else TODOS)
+            autor_c_var.set(TODOS)
         atribuidos = resultado_ciclo.get("atribuidos", [])
         atribuido_combo["values"] = [TODOS] + atribuidos
         if atribuido_var.get() not in [TODOS] + atribuidos:
@@ -1589,9 +1587,9 @@ def main():
                 log("--- modo projeto: %d tarefa(s) conferidas, com PR aberto ou sem ---"
                     % len(tarefas))
                 if ignoradas.get("nao_entregues"):
-                    log("  %d tarefa(s) faltam numa branch de versão mas também não estão "
-                        "na principal: são trabalho não entregue, não backport atrasado."
-                        % ignoradas["nao_entregues"])
+                    log("  %d tarefa(s) faltam numa branch de versão mas não estão nem na "
+                        "principal nem na produção: são trabalho não entregue, não backport "
+                        "atrasado." % ignoradas["nao_entregues"])
             else:
                 log("--- modo PR aberto: sem projeto na URL, o que foi mergeado e teve o PR "
                     "apagado não entra ---")

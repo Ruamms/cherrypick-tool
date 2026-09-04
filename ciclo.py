@@ -239,7 +239,14 @@ def verdadeiro(valor):
         "1", "true", "sim", "yes", "y", "s", "verdadeiro", "on")
 
 
-def branches_obrigatorias(tipo, dados, cfg):
+def esta_na_branch(historico, nome, tarefa):
+    """Se o histórico daquela branch conhece a tarefa. Sem clone o histórico é
+    None e a resposta é não: falta de informação não vira obrigação."""
+    numeros = (historico or {}).get(nome) if nome else None
+    return bool(tarefa and numeros and tarefa in numeros)
+
+
+def branches_obrigatorias(tipo, dados, cfg, na_producao=False):
     """Branches em que a tarefa TEM de estar. Regra única da aplicação.
 
     dados: o registro da tarefa ({"entrega", "ramos", ...}). cfg: o que está
@@ -251,7 +258,9 @@ def branches_obrigatorias(tipo, dados, cfg):
            homologação (a regra antiga, estendida da produção para as duas
            branches de versão configuradas);
         3. 'Confirmar entrega ao cliente?' verdadeiro -> as versões citadas em
-           'ramos para disponibilização', qualquer que seja o tipo.
+           'ramos para disponibilização', qualquer que seja o tipo;
+        4. na_produção -> homologação, QUALQUER que seja o tipo: o que o cliente
+           já recebeu não pode faltar na versão seguinte.
 
     Versão que a tarefa não pediu não entra: é o que separa 'PR não aberto' de
     'não solicitado' na coluna daquela branch.
@@ -270,6 +279,8 @@ def branches_obrigatorias(tipo, dados, cfg):
     juntar((cfg.get("principal") or "").strip())
     if tipo and sem_acento(tipo) in exigem:
         juntar(producao)
+        juntar(homologacao)
+    if na_producao:
         juntar(homologacao)
     if verdadeiro((dados or {}).get("entrega")):
         for versao in versoes_do_texto((dados or {}).get("ramos", "")):
@@ -386,7 +397,8 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             "título do PR" if tipo else "não identificado")
         status_wp = dados.get("status", "")
 
-        obrigatorias = branches_obrigatorias(tipo, dados, cfg)
+        na_producao = esta_na_branch(historico, base_producao, tarefa)
+        obrigatorias = branches_obrigatorias(tipo, dados, cfg, na_producao)
 
         # as três branches nomeadas têm coluna própria; as demais entram por
         # serem obrigatórias (ramos) ou por terem PR aberto (outras branches)
@@ -496,7 +508,9 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
         concluida = dados.get("fechado") or (
             sem_acento(dados.get("status", "")) in libera if libera else False)
         falta_build = bool(concluida and not dados.get("build"))
-        obrigatorias = branches_obrigatorias(dados.get("tipo", ""), dados, cfg)
+        na_producao = esta_na_branch(historico, base_producao, numero)
+        obrigatorias = branches_obrigatorias(
+            dados.get("tipo", ""), dados, cfg, na_producao)
         nomes = list(dict.fromkeys(nomeadas + obrigatorias))
         lados = [_lado(n, [], obrigatorias, revisoes, numero, historico, hoje) for n in nomes]
         por_nome = {l["nome"]: l for l in lados}
@@ -505,8 +519,10 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
         pendentes = [l for l in lados if l["pendente"]]
         faltando = [l for l in pendentes if l is not lado_principal]
         # na principal a tarefa ainda não chegou: não é backport atrasado, é
-        # trabalho que não terminou - e isso quem cobra é o gerenciador
-        entregue = lado_principal is None or not lado_principal["pendente"]
+        # trabalho que não terminou - e isso quem cobra é o gerenciador. Estar na
+        # produção vale como entrega mesmo sem a principal: o cliente já recebeu.
+        na_principal = lado_principal is None or not lado_principal["pendente"]
+        entregue = na_principal or na_producao
 
         if exigir_pr:
             # modo antigo (sem projeto na URL): só o caso do build vazio
@@ -515,13 +531,14 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             pendencia = SEM_BUILD
             detalhe = "tarefa concluída e sem o campo de build preenchido"
         elif faltando and entregue:
+            onde = "está na principal" if na_principal else "está na produção"
             if lado_prod is not None and lado_prod in faltando:
                 pendencia = SEM_PROD
-                detalhe = "está na principal e falta na produção, e não há PR aberto"
+                detalhe = "%s e falta na produção, e não há PR aberto" % onde
             else:
                 pendencia = SEM_VERSAO
-                detalhe = "está na principal e falta em %s, e não há PR aberto" % ", ".join(
-                    l["nome"] for l in faltando)
+                detalhe = "%s e falta em %s, e não há PR aberto" % (onde, ", ".join(
+                    l["nome"] for l in faltando))
         elif falta_build:
             pendencia = SEM_BUILD
             detalhe = "tarefa concluída e sem o campo de build preenchido"

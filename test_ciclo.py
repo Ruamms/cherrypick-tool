@@ -616,6 +616,71 @@ class TestChavesSemAcento(unittest.TestCase):
             self.assertFalse(ciclo.verdadeiro(valor), valor)
 
 
+class TestProducaoExigeHomologacao(unittest.TestCase):
+    """Tudo que está na produção tem de estar na homologação, QUALQUER tipo: a
+    versão seguinte não pode sair sem o que o cliente já recebeu. Antes só o
+    tipo mandava, e Adaptativa na 2601 sem 2602 não era cobrada de ninguém."""
+
+    def cfg(self, exigem=("Corretiva",)):
+        return {"principal": MAIN, "producao": PROD, "homologacao": HOMO,
+                "tipos_exigem": list(exigem)}
+
+    def montar(self, tarefas, historico, prs=(), **kw):
+        kw.setdefault("exigir_pr", False)
+        return ciclo.montar(list(prs), tarefas, PROD, MAIN, ["Corretiva"], [],
+                            dias_parado=7, hoje=HOJE, historico=historico,
+                            base_homologacao=HOMO, **kw)
+
+    def test_adaptativa_na_producao_passa_a_ser_cobrada(self):
+        linhas = self.montar({"106185": tarefa("Adaptativa")},
+                             {MAIN: {"106185"}, PROD: {"106185"}, HOMO: set()})
+        linha = uma(linhas, "106185")
+        self.assertEqual(linha["pendencia"], ciclo.SEM_VERSAO)
+        self.assertIn(HOMO, linha["obrigatorias"])
+
+    def test_fora_da_producao_a_regra_do_tipo_continua_valendo(self):
+        linhas = self.montar({"106185": tarefa("Adaptativa")},
+                             {MAIN: {"106185"}, PROD: set(), HOMO: set()})
+        self.assertEqual([l["tarefa"] for l in linhas], [])
+
+    def test_na_producao_sem_a_principal_nao_e_descartada(self):
+        # o caso 110094: entrou por backport e nunca passou na principal
+        ignoradas = {}
+        linhas = self.montar({"110094": tarefa("Corretiva")},
+                             {MAIN: set(), PROD: {"110094"}, HOMO: set()},
+                             ignoradas=ignoradas)
+        linha = uma(linhas, "110094")
+        self.assertEqual(linha["pendencia"], ciclo.SEM_VERSAO)
+        self.assertIn("está na produção", linha["detalhe"])
+        self.assertFalse(ignoradas.get("nao_entregues"))
+
+    def test_vale_tambem_com_pr_aberto(self):
+        linhas = ciclo.montar(
+            [pr(8100, MAIN, "109618")], {"109618": tarefa("Adaptativa")},
+            PROD, MAIN, ["Corretiva"], [], dias_parado=7, hoje=HOJE,
+            historico={MAIN: set(), PROD: {"109618"}, HOMO: set()},
+            base_homologacao=HOMO)
+        linha = uma(linhas, "109618")
+        self.assertIn(HOMO, linha["obrigatorias"])
+        self.assertEqual(situacao(linha, HOMO), ciclo.SEM_PR)
+
+    def test_sem_clone_local_nao_inventa_obrigacao(self):
+        # histórico None é "não conferido"; falta de informação não vira regra
+        self.assertEqual(
+            ciclo.branches_obrigatorias(
+                "Adaptativa", tarefa("Adaptativa"), self.cfg(),
+                ciclo.esta_na_branch({PROD: None}, PROD, "106185")),
+            [MAIN])
+
+    def test_esta_na_branch(self):
+        self.assertTrue(ciclo.esta_na_branch({PROD: {"1"}}, PROD, "1"))
+        self.assertFalse(ciclo.esta_na_branch({PROD: {"2"}}, PROD, "1"))
+        self.assertFalse(ciclo.esta_na_branch({PROD: None}, PROD, "1"))
+        self.assertFalse(ciclo.esta_na_branch({}, PROD, "1"))
+        self.assertFalse(ciclo.esta_na_branch({PROD: {"1"}}, "", "1"))
+        self.assertFalse(ciclo.esta_na_branch({PROD: {"1"}}, PROD, ""))
+
+
 class TestAtribuicao(unittest.TestCase):
     """Quem ABRE a tarefa costuma ser o suporte; quem responde por ela é a
     pessoa atribuída. São coisas diferentes do autor do PR, que é do GitHub."""
