@@ -993,6 +993,8 @@ def main():
     btn_entrega.pack(side="left", padx=(6, 6))
     btn_versao = tk.Button(filtros_c, text="Versão pedida (ramos)...", width=26)
     btn_versao.pack(side="left")
+    lbl_tipo = tk.Label(filtros_c, fg=tema["dica"], text="")
+    lbl_tipo.pack(side="left", padx=(8, 0))
 
     def _lista_do_estado(chave):
         """Aceita a lista de hoje e o texto de uma versão anterior do estado."""
@@ -1010,6 +1012,12 @@ def main():
             return state["tipos_exigem"]
         return list(mod_ciclo.TIPOS_PADRAO)
 
+    def so_tipos_marcados():
+        """Se a lista mostra só os tipos que exigem produção. Desligado por
+        padrão: a regra de cobrança e o que aparece na tela são escolhas
+        separadas - quem configura a regra nem sempre quer esconder o resto."""
+        return bool(state.get("tipos_so_marcados"))
+
     def marcados_entrega():
         return _lista_do_estado("entrega_filtro")
 
@@ -1022,6 +1030,8 @@ def main():
         versoes = marcados_versao()
         btn_entrega.config(text="Entrega ao cliente: %s" % (", ".join(entrega) or TODOS))
         btn_versao.config(text="Versão pedida: %s" % (", ".join(versoes) or TODAS))
+        lbl_tipo.config(text=("Tipo: só %s" % ", ".join(tipos_exigem()))
+                        if so_tipos_marcados() and tipos_exigem() else "")
     tk.Label(filtros_c, fg=tema["dica"], text=(
         "|   pare o mouse em cima de uma célula (ou do cabeçalho) para ver o que ela diz"
     )).pack(side="left", padx=(10, 0))
@@ -1200,7 +1210,7 @@ def main():
     }
 
     def linhas_filtradas():
-        """Filtros de tela: autor, entrega ao cliente e versão pedida nos ramos.
+        """Filtros de tela: autor, tipo, entrega ao cliente e versão pedida.
 
         Todos sobre o resultado já carregado - trocar filtro não refaz consulta.
         Lista de marcados vazia = filtro desligado, e não 'não mostra nada'.
@@ -1208,9 +1218,13 @@ def main():
         autor = autor_c_var.get()
         entrega = marcados_entrega()
         versoes = marcados_versao()
+        tipos = ({mod_ciclo.sem_acento(t) for t in tipos_exigem()}
+                 if so_tipos_marcados() else set())
         linhas = []
         for linha in ciclo_cache["linhas"]:
             if autor != TODOS and autor not in linha["autores"]:
+                continue
+            if tipos and mod_ciclo.sem_acento(linha["tipo"]) not in tipos:
                 continue
             if entrega and mod_ciclo.rotulo_entrega(linha) not in entrega:
                 continue
@@ -1250,7 +1264,7 @@ def main():
     ligar_ordenacao(grid_c, colunas_c, titulos_c, ordem_ciclo, CHAVES_CICLO,
                     lambda: render_ciclo())
 
-    def escolher_varios(titulo, opcoes, marcados):
+    def escolher_varios(titulo, opcoes, marcados, extra=None):
         if not opcoes:
             messagebox.showinfo("Sem dados", "Clique em Carregar antes de escolher.", parent=root)
             return None
@@ -1270,6 +1284,11 @@ def main():
             var = tk.BooleanVar(value=mod_ciclo.sem_acento(opcao) in ja_marcados)
             escolhas[opcao] = var
             tk.Checkbutton(quadro, text=opcao, variable=var).pack(anchor="w")
+        # caixa extra do rodapé: pergunta separada, sobre a mesma lista
+        var_extra = tk.BooleanVar(value=bool(extra and extra.get("valor")))
+        if extra:
+            tk.Checkbutton(quadro, text=extra["texto"], variable=var_extra).pack(
+                anchor="w", pady=(10, 0))
         saida = {"ok": False}
 
         def confirmar():
@@ -1283,17 +1302,30 @@ def main():
         root.wait_window(janela)
         if not saida["ok"]:
             return None
-        return [o for o, v in escolhas.items() if v.get()]
+        escolhidos = [o for o, v in escolhas.items() if v.get()]
+        return (escolhidos, var_extra.get()) if extra else escolhidos
 
     def do_tipos():
-        escolha = escolher_varios("Tipos de tarefa que exigem chegar na produção:",
-                                  ciclo_cache["tipos"], tipos_exigem())
-        if escolha is None:
+        resposta = escolher_varios(
+            "Tipos de tarefa que exigem chegar na produção:",
+            ciclo_cache["tipos"], tipos_exigem(),
+            extra={"texto": "Listar só as tarefas destes tipos",
+                   "valor": so_tipos_marcados()})
+        if resposta is None:
             return
+        escolha, so_marcados = resposta
+        mudou_regra = escolha != tipos_exigem()
         state["tipos_exigem"] = escolha
+        state["tipos_so_marcados"] = so_marcados
         salvar()
+        atualizar_botoes_filtro()
         if ciclo_cache["linhas"]:
-            do_carregar_ciclo()
+            # regra nova muda a pendência de cada linha; só a caixa de listar
+            # não muda nada do que já foi calculado - basta redesenhar
+            if mudou_regra:
+                do_carregar_ciclo()
+            else:
+                render_ciclo()
 
     def do_filtro_entrega():
         escolha = escolher_varios(

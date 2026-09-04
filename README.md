@@ -306,6 +306,9 @@ produção virar a 2602, você troca os dois campos e nada mais.
   versão. Na primeira abertura já vêm marcados **corretiva** e **dívida técnica**: manutenção
   precisa chegar na versão que o cliente usa, funcionalidade nova não. Desmarcar tudo e
   confirmar vale como escolha — ninguém é cobrado por falta de PR de produção, e o log avisa.
+  No rodapé da caixa, **Listar só as tarefas destes tipos** esconde da lista o que não é
+  desses tipos. São duas perguntas separadas: marcar o tipo diz *quem é cobrado*, a caixa do
+  rodapé diz *quem aparece* — por padrão desligada, e a lista continua trazendo tudo.
 - **Status que liberam merge...** — status intermediários que também contam como "pronto"
   (os fechados na instância já contam sozinhos).
 - **Abrir tarefa / PR** — abre no navegador a tarefa selecionada e os PRs dela. Duplo clique
@@ -330,9 +333,11 @@ de Autor. **Nada marcado = filtro desligado**, nunca "não mostra nada":
 | ------ | ------ |
 | **Entrega ao cliente** | `Sim`, `Não`, `(não informado)`. Só `Sim` deixa na tela a fila de backport do momento; `(não informado)` acha a tarefa cujo campo não veio preenchido. |
 | **Versão pedida (ramos)** | as versões que apareceram na carga, mais `(nenhuma)` para quem não pediu versão. Marcar 2602 responde "o que ainda falta para a 2602?". |
+| **Tipo** | não tem botão próprio: liga na caixa **Listar só as tarefas destes tipos**, dentro de *Tipos que exigem produção...*, e vale sobre os mesmos tipos marcados lá. |
 
 O botão mostra o que está filtrando (`Entrega ao cliente: Sim`), porque caixa de diálogo
-esconde estado. A lista de versões vem do que apareceu na sua base, não de uma lista fixa. E o
+esconde estado — e o filtro por tipo, que não tem botão, aparece ao lado como
+`Tipo: só Corretiva, Dívida Técnica`. A lista de versões vem do que apareceu na sua base, não de uma lista fixa. E o
 filtro de versão olha o que o **card pediu**; para saber se aquela versão já recebeu a tarefa, a
 resposta está na coluna da branch e em PENDENTE EM.
 
