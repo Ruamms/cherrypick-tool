@@ -623,6 +623,106 @@ class TestChavesSemAcento(unittest.TestCase):
             self.assertFalse(ciclo.verdadeiro(valor), valor)
 
 
+FIN = "Nasajon/erp-financas-servicos"
+BAN = "Nasajon/bancos"
+
+
+class TestMultiRepositorio(unittest.TestCase):
+    """Tarefa que atravessa financas e bancos. O histórico é POR repositório:
+    a união escondia pendência de um repo quando o outro já tinha a tarefa, e
+    cobrar todos os repos poria toda tarefa de um faltando no outro."""
+
+    def montar(self, tarefas, historico, prs=(), exigem=("Corretiva",), **kw):
+        kw.setdefault("exigir_pr", False)
+        return ciclo.montar(list(prs), tarefas, PROD, MAIN, list(exigem), [],
+                            dias_parado=7, hoje=HOJE, historico=historico,
+                            base_homologacao=HOMO, **kw)
+
+    def test_uniao_escondia_a_pendencia_do_outro_repo(self):
+        # 109528: na 2602 do bancos, faltando na 2602 do financas
+        linhas = self.montar(
+            {"109528": tarefa("Corretiva")},
+            {MAIN: {FIN: {"109528"}, BAN: {"109528"}},
+             PROD: {FIN: {"109528"}, BAN: {"109528"}},
+             HOMO: {FIN: set(), BAN: {"109528"}}})
+        linha = uma(linhas, "109528")
+        self.assertEqual(linha["pendencia"], ciclo.SEM_VERSAO)
+        self.assertEqual(linha["pendente_em"],
+                         "erp-financas-servicos v2.2602: PR não aberto")
+        self.assertEqual(situacao(linha, HOMO),
+                         "erp-financas-servicos: PR não aberto")
+
+    def test_nao_cobra_repo_que_a_tarefa_nao_tocou(self):
+        # só mexeu no financas: o bancos não pode aparecer como pendência
+        linhas = self.montar(
+            {"110094": tarefa("Corretiva")},
+            {MAIN: {FIN: {"110094"}, BAN: set()},
+             PROD: {FIN: set(), BAN: set()},
+             HOMO: {FIN: set(), BAN: set()}})
+        linha = uma(linhas, "110094")
+        self.assertEqual(linha["pendencia"], ciclo.SEM_PROD)
+        self.assertNotIn("bancos", linha["pendente_em"])
+        self.assertEqual([p["repo"] for p in linha["branches"][0]["partes"]], [FIN])
+
+    def test_faltando_nos_dois_sai_sem_nome_de_repo(self):
+        linhas = self.montar(
+            {"108692": tarefa("Corretiva")},
+            {MAIN: {FIN: {"108692"}, BAN: {"108692"}},
+             PROD: {FIN: set(), BAN: set()},
+             HOMO: {FIN: set(), BAN: set()}})
+        linha = uma(linhas, "108692")
+        self.assertEqual(situacao(linha, PROD), ciclo.SEM_PR)
+        self.assertEqual(linha["pendente_em"],
+                         "%s: %s, %s: %s" % (PROD, ciclo.SEM_PR, HOMO, ciclo.SEM_PR))
+
+    def test_obrigacao_e_por_repo(self):
+        # Adaptativa na produção SÓ do bancos: a homologação é exigida lá, e o
+        # financas, que não está na produção, não é cobrado por tipo nenhum
+        linhas = self.montar(
+            {"106185": tarefa("Adaptativa")},
+            {MAIN: {FIN: {"106185"}, BAN: {"106185"}},
+             PROD: {FIN: set(), BAN: {"106185"}},
+             HOMO: {FIN: set(), BAN: set()}})
+        linha = uma(linhas, "106185")
+        self.assertEqual(linha["pendencia"], ciclo.SEM_VERSAO)
+        self.assertEqual(linha["pendente_em"], "bancos v2.2602: PR não aberto")
+
+    def test_pr_aberto_conta_como_repo_da_tarefa(self):
+        linhas = self.montar(
+            {"109453": tarefa("Corretiva")},
+            {MAIN: {FIN: {"109453"}, BAN: set()},
+             PROD: {FIN: {"109453"}, BAN: set()},
+             HOMO: {FIN: set(), BAN: set()}},
+            prs=[pr(8100, HOMO, "109453", repo=BAN)])
+        linha = uma(linhas, "109453")
+        self.assertIn(ciclo.AGUARDANDO, situacao(linha, HOMO))
+        self.assertIn("erp-financas-servicos", situacao(linha, HOMO))
+
+    def test_repos_da_tarefa(self):
+        hist = {MAIN: {FIN: {"1"}, BAN: {"2"}}}
+        self.assertEqual(ciclo.repos_da_tarefa(hist, "1"), {FIN})
+        self.assertEqual(ciclo.repos_da_tarefa(hist, "2"), {BAN})
+        self.assertEqual(ciclo.repos_da_tarefa(hist, "9"), {""})
+        self.assertEqual(
+            ciclo.repos_da_tarefa(hist, "1", [{"repo": BAN}]), {FIN, BAN})
+        # histórico sem repositório nomeado: um repo só, e anônimo
+        self.assertEqual(ciclo.repos_da_tarefa({MAIN: {"1"}}, "1"), {""})
+        self.assertEqual(ciclo.repos_da_tarefa({}, "1"), {""})
+
+    def test_esta_na_branch_por_repo(self):
+        hist = {PROD: {FIN: {"1"}, BAN: set()}}
+        self.assertTrue(ciclo.esta_na_branch(hist, PROD, "1"))
+        self.assertTrue(ciclo.esta_na_branch(hist, PROD, "1", FIN))
+        self.assertFalse(ciclo.esta_na_branch(hist, PROD, "1", BAN))
+        # sem clone daquele repo: não conferido não vira obrigação
+        self.assertFalse(ciclo.esta_na_branch({PROD: {FIN: None}}, PROD, "1", FIN))
+
+    def test_nome_curto(self):
+        self.assertEqual(ciclo.nome_curto(BAN), "bancos")
+        self.assertEqual(ciclo.nome_curto("bancos"), "bancos")
+        self.assertEqual(ciclo.nome_curto(""), "")
+
+
 class TestFiltrosDeTela(unittest.TestCase):
     """Os cinco filtros da barra. Nada marcado = todos, nunca lista vazia: foi
     um filtro invisível marcado sozinho que fez a tela dizer 0 havendo 912."""
@@ -802,7 +902,8 @@ class TestContratoDaLinha(unittest.TestCase):
                 self.assertIsInstance(linha["urls"][lado], list)
             for branch in linha["branches"]:
                 self.assertEqual(sorted(branch), ["mergeado", "nome", "obrigatoria",
-                                                  "pendente", "prs", "situacao", "urls"])
+                                                  "partes", "pendente", "prs", "situacao",
+                                                  "urls"])
 
 
 class TestExcel(unittest.TestCase):

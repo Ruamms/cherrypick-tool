@@ -865,7 +865,10 @@ def main():
 
     rotulo(topo_c, "Repositórios",
            "org/repo separados por vírgula, OU o caminho de um clone - nesse caso o org/repo\n"
-           "sai do remote origin. É do clone que sai a resposta 'o commit já está na branch?'.",
+           "sai do remote origin. É do clone que sai a resposta 'o commit já está na branch?'.\n\n"
+           "Com mais de um repositório (ex.: financas e bancos), cada um é conferido em\n"
+           "separado, e a tarefa só é cobrada onde ela mexeu. A célula nomeia o repo\n"
+           "quando eles divergem: 'bancos: PR não aberto'.",
            row=0, column=0, sticky="w", pady=2)
     repos_var = tk.StringVar(value=state.get("repos", ""))
     campo_repos = tk.Entry(topo_c, textvariable=repos_var)
@@ -1554,18 +1557,20 @@ def main():
                 log("")
                 log("--- histórico local (para saber o que já foi mergeado) ---")
                 for branch in alvos:
-                    numeros = set()
-                    achou = False
+                    por_repo = {}
                     for nome_repo, caminho in locais.items():
                         ref = "origin/" + strip_origin(branch)
                         if not _ref_valida(caminho, ref):
                             log("  %s: %s não existe no clone" % (nome_repo, ref))
+                            por_repo[nome_repo] = None
                             continue
                         _assuntos, ops, total = indice_producao(caminho, ref)
-                        numeros |= set(ops)
-                        achou = True
-                        log("  %s %s: %d commits" % (nome_repo, ref, total))
-                    historico[branch] = numeros if achou else None
+                        por_repo[nome_repo] = set(ops)
+                        log("  %s %s: %d commits, %d tarefa(s)"
+                            % (nome_repo, ref, total, len(ops)))
+                    # por repositório, nunca a união: tarefa que falta na 2602 de
+                    # um repo e está na do outro desaparecia da lista
+                    historico[branch] = por_repo
             else:
                 log("")
                 log("Sem clone local informado: não dá para distinguir 'mergeado' de "
@@ -1598,6 +1603,19 @@ def main():
             else:
                 log("--- modo PR aberto: sem projeto na URL, o que foi mergeado e teve o PR "
                     "apagado não entra ---")
+            if len(locais) > 1:
+                por_repo = {}
+                for l in linhas:
+                    for lado in l["branches"]:
+                        for parte in lado["partes"]:
+                            if (parte["repo"] and parte["obrigatoria"]
+                                    and not parte["mergeado"]):
+                                por_repo.setdefault(parte["repo"], set()).add(l["tarefa"])
+                log("")
+                log("--- por repositório (a tarefa só é cobrada onde ela mexeu) ---")
+                for repo in sorted(locais):
+                    log("  %s: %d tarefa(s) com algo pendente"
+                        % (repo, len(por_repo.get(repo, ()))))
             resultado_ciclo["linhas"] = linhas
             resultado_ciclo["autores"] = sorted({p["autor"] for p in prs if p["autor"]})
             resultado_ciclo["atribuidos"] = mod_ciclo.atribuidos_vistos(linhas)

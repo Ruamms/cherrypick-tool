@@ -262,10 +262,57 @@ def verdadeiro(valor):
         "1", "true", "sim", "yes", "y", "s", "verdadeiro", "on")
 
 
-def esta_na_branch(historico, nome, tarefa):
+def nome_curto(repo):
+    """Só o nome do repositório, sem a organização: é o que cabe na célula."""
+    return (repo or "").split("/")[-1] or repo
+
+
+def _por_repo(valor):
+    """Normaliza o histórico de UMA branch para {repo: números}.
+
+    Aceita as duas formas: um conjunto só (um repositório, sem nome - é o que
+    os testes e a análise de um repo usam) e o dicionário por repositório.
+    O repo anônimo é a chave '', e ele responde por qualquer repositório.
+    """
+    if isinstance(valor, dict):
+        return valor or {"": None}
+    return {"": valor}
+
+
+def _numeros_do_repo(por_repo, repo):
+    """Números daquele repo, ou os do repo anônimo quando não há nome."""
+    if list(por_repo) == [""]:
+        return por_repo[""]
+    return por_repo.get(repo)
+
+
+def repos_da_tarefa(historico, tarefa, prs=()):
+    """Repositórios em que a tarefa mexeu: onde o número aparece no histórico
+    de alguma branch analisada, ou onde ela tem PR aberto.
+
+    É o que impede cobrar a tarefa em repositório que ela nunca tocou - sem
+    isso, toda tarefa de um repo passaria a 'faltar' no outro. Histórico sem
+    repositório nomeado devolve {''}: um repo só, e o texto sai sem nome.
+    """
+    valores = [_por_repo(v) for v in (historico or {}).values()]
+    if not any(r for v in valores for r in v):
+        return {""}
+    achados = {r for v in valores for r, numeros in v.items()
+               if r and tarefa and numeros and tarefa in numeros}
+    achados |= {p.get("repo") or "" for p in (prs or ())}
+    return achados or {""}
+
+
+def esta_na_branch(historico, nome, tarefa, repo=None):
     """Se o histórico daquela branch conhece a tarefa. Sem clone o histórico é
-    None e a resposta é não: falta de informação não vira obrigação."""
-    numeros = (historico or {}).get(nome) if nome else None
+    None e a resposta é não: falta de informação não vira obrigação.
+
+    repo=None pergunta por qualquer repositório; com repo, só por aquele.
+    """
+    por_repo = _por_repo((historico or {}).get(nome) if nome else None)
+    if repo is None:
+        return any(bool(tarefa and n and tarefa in n) for n in por_repo.values())
+    numeros = _numeros_do_repo(por_repo, repo)
     return bool(tarefa and numeros and tarefa in numeros)
 
 
@@ -353,21 +400,60 @@ def situacao_do_lado(prs_do_lado, revisoes, tarefa, historico, hoje, obrigatoria
     return SEM_PR, False
 
 
-def _lado(nome, prs_do_grupo, obrigatorias, revisoes, tarefa, historico, hoje):
-    """Registro de uma branch: os PRs dela, se é obrigatória e como está."""
+def _lado(nome, prs_do_grupo, obrig_por_repo, revisoes, tarefa, historico, hoje, repos):
+    """Registro de uma branch: os PRs dela, se é obrigatória e como está.
+
+    Com mais de um repositório a branch é conferida em CADA repo relevante,
+    com a obrigação daquele repo - a mesma tarefa pode estar na 2601 de um e
+    não do outro. O texto nomeia só quem tem problema; quando todos respondem
+    a mesma coisa, sai sem nome de repo, exatamente como com um repo só.
+    """
     prs = [p for p in prs_do_grupo if mesma_branch(p.get("base", ""), nome)]
-    obrigatoria = any(mesma_branch(nome, o) for o in obrigatorias)
-    texto, mergeado = situacao_do_lado(
-        prs, revisoes, tarefa, historico.get(nome), hoje, obrigatoria)
+    por_repo = _por_repo(historico.get(nome))
+    partes = []
+    for repo in sorted(repos):
+        obrig_repo = any(mesma_branch(nome, o) for o in obrig_por_repo.get(repo, ()))
+        prs_repo = [p for p in prs if not repo or p.get("repo") == repo]
+        texto, ja_esta = situacao_do_lado(
+            prs_repo, revisoes, tarefa, _numeros_do_repo(por_repo, repo), hoje, obrig_repo)
+        partes.append({"repo": repo, "situacao": texto, "mergeado": ja_esta,
+                       "obrigatoria": obrig_repo})
     return {
         "nome": nome,
-        "obrigatoria": obrigatoria,
-        "situacao": texto,
-        "mergeado": mergeado,
-        "pendente": obrigatoria and not mergeado,
+        "obrigatoria": any(p["obrigatoria"] for p in partes),
+        "situacao": _texto_do_lado(partes),
+        "partes": partes,
+        "mergeado": all(p["mergeado"] for p in partes),
+        "pendente": any(p["obrigatoria"] and not p["mergeado"] for p in partes),
         "prs": prs,
         "urls": [p["url"] for p in prs if p.get("url")],
     }
+
+
+def _pendentes_do_lado(partes):
+    return [p for p in partes if p["obrigatoria"] and not p["mergeado"]]
+
+
+def _texto_do_lado(partes):
+    """Repositórios que respondem a mesma coisa saem sem nome - é o que mantém
+    a célula igual à de antes com um repo só. Diferindo, nomeia o que falta."""
+    if len({p["situacao"] for p in partes}) == 1:
+        return partes[0]["situacao"]
+    mostrar = _pendentes_do_lado(partes) or partes
+    return ", ".join("%s: %s" % (nome_curto(p["repo"]), p["situacao"]) for p in mostrar)
+
+
+def frase_pendente(lado):
+    """'v2.2602: PR não aberto' com um repositório; 'bancos v2.2602: PR não
+    aberto' quando é preciso dizer em QUAL repositório a tarefa falta."""
+    faltando = _pendentes_do_lado(lado["partes"])
+    # todos respondendo a mesma coisa dispensa nome de repo: 'falta na 2602'
+    # dito duas vezes com dois nomes nao informa mais do que dito uma vez
+    if (len(lado["partes"]) == 1 or not faltando
+            or len({p["situacao"] for p in lado["partes"]}) == 1):
+        return "%s: %s" % (lado["nome"], lado["situacao"])
+    return ", ".join("%s %s: %s" % (nome_curto(p["repo"]), lado["nome"], p["situacao"])
+                     for p in faltando)
 
 
 def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
@@ -377,8 +463,9 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
 
     tarefas: {número: {"tipo","status","fechado","assunto","build","entrega","ramos"}}.
     revisões: {(repo, número_pr): "aprovado"|"ajustes"|"comentado"|""}.
-    histórico: {nome_da_branch: set de números de tarefa}, None naquela branch
-    quando não havia clone local para conferir.
+    histórico: {nome_da_branch: {repo: set de números}} - ou, com um
+    repositório só, {nome_da_branch: set de números}. None (no lugar do
+    conjunto) quando não havia clone daquele repo para conferir.
 
     exigir_pr=True é o comportamento antigo: sem projeto na URL, só entra tarefa
     com PR aberto. Com False - a URL do OpenProject aponta para um projeto -
@@ -420,8 +507,17 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             "título do PR" if tipo else "não identificado")
         status_wp = dados.get("status", "")
 
-        na_producao = esta_na_branch(historico, base_producao, tarefa)
-        obrigatorias = branches_obrigatorias(tipo, dados, cfg, na_producao)
+        # cada repo é cobrado pelos SEUS fatos: a tarefa pode estar na produção
+        # de um e não do outro, e aí a homologação só é exigida onde ela está
+        repos = repos_da_tarefa(historico, tarefa, prs_do_grupo)
+        obrig_por_repo = {r: branches_obrigatorias(
+            tipo, dados, cfg, esta_na_branch(historico, base_producao, tarefa, r))
+            for r in repos}
+        obrigatorias = []
+        for lista in obrig_por_repo.values():
+            for nome_b in lista:
+                if not any(mesma_branch(nome_b, ja) for ja in obrigatorias):
+                    obrigatorias.append(nome_b)
 
         # as três branches nomeadas têm coluna própria; as demais entram por
         # serem obrigatórias (ramos) ou por terem PR aberto (outras branches)
@@ -432,8 +528,8 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             if base and not any(mesma_branch(base, x) for x in nomeadas + extras):
                 extras.append(base)
 
-        lados = [_lado(n, prs_do_grupo, obrigatorias, revisoes, tarefa, historico, hoje)
-                 for n in nomeadas + extras]
+        lados = [_lado(n, prs_do_grupo, obrig_por_repo, revisoes, tarefa, historico,
+                       hoje, repos) for n in nomeadas + extras]
         por_nome = {l["nome"]: l for l in lados}
         lado_principal = por_nome.get(base_principal)
         lado_prod = por_nome.get(base_producao)
@@ -495,7 +591,7 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             "versoes": versoes_do_texto(dados.get("ramos", "")),
             "obrigatorias": [l["nome"] for l in lados if l["obrigatoria"]],
             "branches": lados,
-            "pendente_em": ", ".join("%s: %s" % (l["nome"], l["situacao"]) for l in pendentes),
+            "pendente_em": ", ".join(frase_pendente(l) for l in pendentes),
             "pr_principal": lado_principal["situacao"] if lado_principal else "",
             "pr_producao": texto_prod,
             "pr_homologacao": lado_homo["situacao"] if lado_homo else "",
@@ -528,11 +624,19 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
         concluida = dados.get("fechado") or (
             sem_acento(dados.get("status", "")) in libera if libera else False)
         falta_build = bool(concluida and not dados.get("build"))
+        repos = repos_da_tarefa(historico, numero)
         na_producao = esta_na_branch(historico, base_producao, numero)
-        obrigatorias = branches_obrigatorias(
-            dados.get("tipo", ""), dados, cfg, na_producao)
+        obrig_por_repo = {r: branches_obrigatorias(
+            dados.get("tipo", ""), dados, cfg,
+            esta_na_branch(historico, base_producao, numero, r)) for r in repos}
+        obrigatorias = []
+        for lista in obrig_por_repo.values():
+            for nome_b in lista:
+                if not any(mesma_branch(nome_b, ja) for ja in obrigatorias):
+                    obrigatorias.append(nome_b)
         nomes = list(dict.fromkeys(nomeadas + obrigatorias))
-        lados = [_lado(n, [], obrigatorias, revisoes, numero, historico, hoje) for n in nomes]
+        lados = [_lado(n, [], obrig_por_repo, revisoes, numero, historico, hoje, repos)
+                 for n in nomes]
         por_nome = {l["nome"]: l for l in lados}
         lado_principal = por_nome.get(base_principal)
         lado_prod = por_nome.get(base_producao)
@@ -571,7 +675,7 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             "versoes": versoes_do_texto(dados.get("ramos", "")),
             "obrigatorias": [l["nome"] for l in lados if l["obrigatoria"]],
             "branches": lados,
-            "pendente_em": ", ".join("%s: %s" % (l["nome"], l["situacao"]) for l in pendentes),
+            "pendente_em": ", ".join(frase_pendente(l) for l in pendentes),
             "pr_principal": (por_nome[base_principal]["situacao"]
                              if base_principal in por_nome else ""),
             "pr_producao": (por_nome[base_producao]["situacao"]

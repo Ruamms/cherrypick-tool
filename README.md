@@ -285,7 +285,7 @@ Na ordem em que aparecem na tela:
 
 | Campo | O que é |
 | ----- | ------- |
-| **Repositórios** | `org/repo` separados por vírgula **ou** o caminho de um clone — nesse caso o `org/repo` é descoberto pelo remote `origin`. Vazio usa o repositório da aba git. |
+| **Repositórios** | `org/repo` separados por vírgula **ou** o caminho de um clone — nesse caso o `org/repo` é descoberto pelo remote `origin`. Vazio usa o repositório da aba git. **Mais de um repositório é conferido em separado** (veja abaixo). |
 | **OpenProject** | URL da sua instância, ou de um **projeto** dela (`.../projects/meu-time`) — com projeto, a análise deixa de depender de PR aberto (veja acima). **Opcional**: sem ela a aba roda só com o GitHub e deduz o tipo do título do PR. |
 | **Tarefas dos últimos (dias)** | janela das tarefas do projeto. Vale **só** no modo projeto; no outro é ignorado. |
 | **Token da API** | token pessoal do OpenProject (*Minha conta → Tokens de acesso*), **nunca** a sua senha. O botão **Onde pegar o token** abre essa página. Guardado cifrado nesta máquina. |
@@ -326,6 +326,30 @@ Cada tipo aparece **uma vez**, com a grafia do gerenciador. O tipo chega escrito
 formas — como o gerenciador manda (`Corretiva`) ou deduzido do título do PR, em minúsculas
 (`corretiva`) — e para a regra sempre foram o mesmo tipo, porque a comparação ignora acento e
 caixa. Marcar um marca os dois.
+
+### Mais de um repositório
+
+Tarefa de banco costuma atravessar dois repositórios — o de código e o de scripts. Basta
+listar os dois em **Repositórios** (`C:\@work\erp-financas-servicos, C:\@work\bancos`), e cada
+um é conferido **em separado**: o histórico é lido por repositório, nunca somado.
+
+Somar era o erro: com a união, tarefa que falta na 2602 de um repo mas já está na 2602 do
+outro aparecia como *mergeada* e saía da lista. Medido no `financas` + `bancos`: 12 pendências
+no primeiro, 29 no segundo, e a união escondia uma delas — sem nunca dizer em qual repositório
+faltava o cherry-pick.
+
+Duas regras seguram o resultado:
+
+1. **a tarefa só é cobrada nos repositórios em que ela mexeu** — onde o número dela aparece no
+   histórico de alguma branch analisada, ou onde ela tem PR aberto. Sem isso, as 2.471 tarefas
+   do `bancos` passariam a "faltar" no `financas`, e vice-versa;
+2. **a obrigação é por repositório** — a mesma tarefa pode estar na 2601 de um e não do outro,
+   e aí a homologação só é exigida onde ela realmente está na produção.
+
+O texto nomeia o repositório **só quando eles divergem**: `bancos: PR não aberto` na coluna da
+branch, `bancos v2.2602: PR não aberto` em PENDENTE EM. Quando os repositórios respondem a
+mesma coisa (todos mergeados, todos faltando), o texto sai sem nome — com um repositório só, a
+tela é exatamente a de antes. O log fecha com a contagem por repositório.
 
 ### Filtros
 
