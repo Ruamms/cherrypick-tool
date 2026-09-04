@@ -623,6 +623,61 @@ class TestChavesSemAcento(unittest.TestCase):
             self.assertFalse(ciclo.verdadeiro(valor), valor)
 
 
+class TestFiltrosDeTela(unittest.TestCase):
+    """Os cinco filtros da barra. Nada marcado = todos, nunca lista vazia: foi
+    um filtro invisível marcado sozinho que fez a tela dizer 0 havendo 912."""
+
+    def linha(self, **campos):
+        base = {"atribuido": "RUAN MAGALHAES SAMPAIO", "autores": ["Ruan-Sampaio"],
+                "tipo": "Dívida Técnica", "entrega": True, "tem_entrega": True,
+                "versoes": ["2602"]}
+        base.update(campos)
+        return base
+
+    def test_sem_nada_marcado_passa_tudo(self):
+        self.assertTrue(ciclo.passa_nos_filtros(self.linha()))
+        self.assertTrue(ciclo.passa_nos_filtros(
+            self.linha(atribuido="", autores=[], tipo="-", versoes=[])))
+
+    def test_atribuicao(self):
+        linha = self.linha()
+        self.assertTrue(ciclo.passa_nos_filtros(linha, atribuidos=["RUAN MAGALHAES SAMPAIO"]))
+        self.assertFalse(ciclo.passa_nos_filtros(linha, atribuidos=["Rafael Mello"]))
+        self.assertTrue(ciclo.passa_nos_filtros(
+            linha, atribuidos=["Rafael Mello", "RUAN MAGALHAES SAMPAIO"]))
+
+    def test_atribuicao_sem_ninguem_sai_quando_o_filtro_liga(self):
+        self.assertFalse(ciclo.passa_nos_filtros(
+            self.linha(atribuido=""), atribuidos=["RUAN MAGALHAES SAMPAIO"]))
+
+    def test_autor_do_pr_derruba_linha_sem_pr(self):
+        # o caso que zerou a lista: PR mergeado e apagado não tem autor
+        self.assertFalse(ciclo.passa_nos_filtros(
+            self.linha(autores=[]), autores=["Ruan-Sampaio"]))
+        self.assertTrue(ciclo.passa_nos_filtros(self.linha(autores=[])))
+
+    def test_tipo_ignora_acento_e_caixa(self):
+        linha = self.linha(tipo="divida tecnica")
+        self.assertTrue(ciclo.passa_nos_filtros(linha, tipos=["Dívida Técnica"]))
+        self.assertFalse(ciclo.passa_nos_filtros(linha, tipos=["Corretiva"]))
+
+    def test_entrega_e_versao(self):
+        linha = self.linha()
+        self.assertTrue(ciclo.passa_nos_filtros(linha, entregas=[ciclo.ENTREGA_SIM]))
+        self.assertFalse(ciclo.passa_nos_filtros(linha, entregas=[ciclo.ENTREGA_NAO]))
+        self.assertTrue(ciclo.passa_nos_filtros(linha, versoes=["2602"]))
+        self.assertFalse(ciclo.passa_nos_filtros(linha, versoes=["2601"]))
+        self.assertTrue(ciclo.passa_nos_filtros(
+            self.linha(versoes=[]), versoes=[ciclo.SEM_VERSAO_PEDIDA]))
+
+    def test_filtros_se_somam(self):
+        linha = self.linha()
+        self.assertTrue(ciclo.passa_nos_filtros(
+            linha, atribuidos=["RUAN MAGALHAES SAMPAIO"], tipos=["Dívida Técnica"]))
+        self.assertFalse(ciclo.passa_nos_filtros(
+            linha, atribuidos=["RUAN MAGALHAES SAMPAIO"], tipos=["Corretiva"]))
+
+
 class TestProducaoExigeHomologacao(unittest.TestCase):
     """Tudo que está na produção tem de estar na homologação, QUALQUER tipo: a
     versão seguinte não pode sair sem o que o cliente já recebeu. Antes só o

@@ -289,8 +289,6 @@ Na ordem em que aparecem na tela:
 | **OpenProject** | URL da sua instância, ou de um **projeto** dela (`.../projects/meu-time`) — com projeto, a análise deixa de depender de PR aberto (veja acima). **Opcional**: sem ela a aba roda só com o GitHub e deduz o tipo do título do PR. |
 | **Tarefas dos últimos (dias)** | janela das tarefas do projeto. Vale **só** no modo projeto; no outro é ignorado. |
 | **Token da API** | token pessoal do OpenProject (*Minha conta → Tokens de acesso*), **nunca** a sua senha. O botão **Onde pegar o token** abre essa página. Guardado cifrado nesta máquina. |
-| **Autor do PR** | quem **abriu o PR** no GitHub (login); a lista é preenchida pela carga. Abre sempre em `(todos)` e não é guardado entre sessões: tarefa sem PR aberto não tem autor, então escolher alguém aqui esconde justamente o que o modo projeto existe para achar. |
-| **Atribuída a** | de quem é a **tarefa** no OpenProject. É o filtro de "o que é meu": o suporte abre a tarefa (é o autor dela lá), mas quem responde é a pessoa atribuída — e nem sempre é quem abriu o PR. Depois da carga já vem em você, se você aparecer na lista. Sem OpenProject configurado a lista fica vazia e o filtro em `(todos)`. |
 | **Branch de produção** | contra qual branch o PR de produção é esperado (ex.: `release-2601`). Vazio, usa a da aba git. A comparação ignora maiúsculas. |
 | **Branch de homologação** | a próxima versão (ex.: `release-2602`). **Vazio, a ferramenta se comporta exatamente como antes**: uma branch de versão só. |
 | **Query salva (id)** | **opcional.** O número que aparece na URL do gerenciador como `?query_id=1234` — a visão já filtrada do seu time, para trazer também tarefas que não têm PR aberto. As tarefas dos PRs são buscadas pelo número, independente dela. |
@@ -302,21 +300,26 @@ produção virar a 2602, você troca os dois campos e nada mais.
 
 ### Os botões
 
+A aba tem três linhas, e a diferença entre elas é o que muda: **ação**, **regra** e **filtro**.
+Regra muda a *pendência* de cada tarefa e refaz a conta; filtro só *esconde linha* do
+resultado que já está carregado.
+
 - **Carregar** — busca os PRs abertos e as tarefas, e monta a lista. É a ação principal da aba.
-- **Tipos que exigem produção...** — marque aqui os tipos que precisam chegar nas branches de
-  versão. Na primeira abertura já vêm marcados **corretiva** e **dívida técnica**: manutenção
-  precisa chegar na versão que o cliente usa, funcionalidade nova não. Desmarcar tudo e
-  confirmar vale como escolha — ninguém é cobrado por falta de PR de produção, e o log avisa.
-  No rodapé da caixa, **Listar só as tarefas destes tipos** esconde da lista o que não é
-  desses tipos. São duas perguntas separadas: marcar o tipo diz *quem é cobrado*, a caixa do
-  rodapé diz *quem aparece* — por padrão desligada, e a lista continua trazendo tudo.
-- **Status que liberam merge...** — status intermediários que também contam como "pronto"
-  (os fechados na instância já contam sozinhos).
 - **Abrir tarefa / PR** — abre no navegador a tarefa selecionada e os PRs dela. Duplo clique
   na linha faz o mesmo.
 - **Exportar Excel...** — grava o que está na tela (ver abaixo).
 
-Os dois botões de configuração só listam valores depois da primeira carga — eles mostram o que
+Na linha **Regras:**
+
+- **Tipos que exigem produção...** — marque aqui os tipos que precisam chegar nas branches de
+  versão. Na primeira abertura já vêm marcados **corretiva** e **dívida técnica**: manutenção
+  precisa chegar na versão que o cliente usa, funcionalidade nova não. Desmarcar tudo e
+  confirmar vale como escolha — ninguém é cobrado por falta de PR de produção, e o log avisa.
+  Isto **não** esconde linha nenhuma: quem esconde é o filtro **Tipo**.
+- **Status que liberam merge...** — status intermediários que também contam como "pronto"
+  (os fechados na instância já contam sozinhos).
+
+Os dois botões de regra só listam valores depois da primeira carga — eles mostram o que
 existe na sua base, não uma lista fixa.
 
 Cada tipo aparece **uma vez**, com a grafia do gerenciador. O tipo chega escrito de duas
@@ -326,19 +329,24 @@ caixa. Marcar um marca os dois.
 
 ### Filtros
 
-Dois botões abaixo da barra de ações, com caixas de marcar iguais às da configuração. Agem
-**sobre o resultado já carregado** — trocar filtro não refaz consulta nenhuma, igual ao filtro
-de Autor. **Nada marcado = filtro desligado**, nunca "não mostra nada":
+Cinco botões na linha **Filtrar:**, todos com o **mesmo** comportamento: clicar abre uma caixa
+de marcar, e **nada marcado = filtro desligado** — nunca "não mostra nada". Agem sobre o
+resultado já carregado: trocar filtro não refaz consulta nenhuma. Nenhum deles vem marcado.
 
 | Filtro | Opções |
 | ------ | ------ |
-| **Entrega ao cliente** | `Sim`, `Não`, `(não informado)`. Só `Sim` deixa na tela a fila de backport do momento; `(não informado)` acha a tarefa cujo campo não veio preenchido. |
-| **Versão pedida (ramos)** | as versões que apareceram na carga, mais `(nenhuma)` para quem não pediu versão. Marcar 2602 responde "o que ainda falta para a 2602?". |
-| **Tipo** | não tem botão próprio: liga na caixa **Listar só as tarefas destes tipos**, dentro de *Tipos que exigem produção...*, e vale sobre os mesmos tipos marcados lá. |
+| **Atribuída a** | de quem é a **tarefa** no OpenProject. É o "o que é meu": o suporte abre a tarefa, mas quem responde por ela é a pessoa atribuída. Sem OpenProject configurado a lista fica vazia. |
+| **Autor do PR** | quem **abriu o PR** no GitHub (login). Atenção: tarefa cujo PR já foi mergeado e apagado **não tem autor**, então marcar alguém aqui esconde justamente o que o modo projeto existe para achar. |
+| **Tipo** | os tipos que apareceram na carga. Não confunda com a regra *Tipos que exigem produção*: esta esconde linha, aquela decide quem é cobrado. |
+| **Entrega** | `Sim`, `Não`, `(não informado)`. Só `Sim` deixa na tela a fila de backport do momento; `(não informado)` acha a tarefa cujo campo não veio preenchido. |
+| **Versão pedida** | as versões que apareceram na carga, mais `(nenhuma)` para quem não pediu versão. Marcar 2602 responde "o que ainda falta para a 2602?". |
 
-O botão mostra o que está filtrando (`Entrega ao cliente: Sim`), porque caixa de diálogo
-esconde estado — e o filtro por tipo, que não tem botão, aparece ao lado como
-`Tipo: só Corretiva, Dívida Técnica`. A lista de versões vem do que apareceu na sua base, não de uma lista fixa. E o
+**Limpar filtros** desliga os cinco de uma vez, e fica apagado quando não há nada filtrando.
+
+Cada botão mostra o próprio valor (`Atribuída a: Rafael Mello`), porque caixa de diálogo
+esconde estado. E o rodapé conta o que o filtro fez: `37 de 912 tarefa(s) na tela, 2 filtro(s)
+ativo(s)`. Quando um filtro esconde **tudo**, o rodapé fica vermelho e manda limpar — a tela
+já disse `0 tarefa(s)` havendo 912, e não havia como desconfiar. A lista de versões vem do que apareceu na sua base, não de uma lista fixa. E o
 filtro de versão olha o que o **card pediu**; para saber se aquela versão já recebeu a tarefa, a
 resposta está na coluna da branch e em PENDENTE EM.
 

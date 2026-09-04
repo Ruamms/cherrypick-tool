@@ -149,6 +149,32 @@ def tipo_do_titulo(titulo):
     return ""
 
 
+def passa_nos_filtros(linha, atribuidos=(), autores=(), tipos=(), entregas=(),
+                      versoes=()):
+    """Se a linha sobrevive aos filtros de tela. Coleção vazia = filtro
+    desligado, nunca 'não mostra nada' - é a mesma regra para os cinco.
+
+    Atribuição e tipo comparam sem acento e sem caixa, como o resto da
+    aplicação. Filtro de autor derruba linha sem PR aberto (ela não tem autor),
+    e é por isso que escolher alguém ali esvazia a lista no modo projeto.
+    """
+    if atribuidos and sem_acento(linha.get("atribuido") or "") not in {
+            sem_acento(a) for a in atribuidos}:
+        return False
+    if autores and not set(autores) & set(linha.get("autores") or []):
+        return False
+    if tipos and sem_acento(linha.get("tipo") or "") not in {
+            sem_acento(t) for t in tipos}:
+        return False
+    if entregas and rotulo_entrega(linha) not in entregas:
+        return False
+    if versoes:
+        pedidas = linha.get("versoes") or [SEM_VERSAO_PEDIDA]
+        if not any(v in versoes for v in pedidas):
+            return False
+    return True
+
+
 def atribuidos_vistos(linhas):
     """Pessoas atribuídas encontradas, uma vez cada. Só vem do gerenciador:
     tarefa que a carga não achou (ou instância sem OpenProject) fica de fora."""

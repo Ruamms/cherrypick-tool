@@ -657,8 +657,6 @@ def main():
             "op_url": op_url_var.get().strip(),
             "query": query_var.get().strip(),
             "token_cifrado": _proteger(token_var.get().strip()),
-            "atribuido_ciclo": ("" if atribuido_var.get() == TODOS
-                                else atribuido_var.get()),
             "dias_parado": dias_parado_var.get().strip() or "7",
             "conta": conta_var.get(),
             "producao_ciclo": prod_c_var.get().strip(),
@@ -849,7 +847,7 @@ def main():
     )
 
     ciclo_cache = {"linhas": [], "tipos": [], "status": [], "fechados": [],
-                   "usuario": "", "versoes": []}
+                   "autores": [], "atribuidos": [], "versoes": []}
     ciclo_dados = []
     resultado_ciclo = {}
 
@@ -930,89 +928,85 @@ def main():
     tk.Button(topo_c, text="Onde pegar o token", command=abrir_pagina_token).grid(
         row=2, column=2, columnspan=2, sticky="w", padx=(12, 0))
 
-    rotulo(topo_c, "Autor do PR",
-           "Quem ABRIU o PR no GitHub (login). Não é de quem é a tarefa: "
-           "o suporte abre a tarefa, outra pessoa abre o PR.",
-           row=3, column=0, sticky="w", pady=2)
-    pessoas_c = tk.Frame(topo_c)
-    pessoas_c.grid(row=3, column=1, sticky="w", pady=2)
-    autor_c_var = tk.StringVar(value=TODOS)
-    autor_c_combo = ttk.Combobox(pessoas_c, textvariable=autor_c_var, width=24, state="readonly")
-    autor_c_combo["values"] = [TODOS]
-    autor_c_combo.pack(side="left")
-    # rótulo aqui é criado na mão: 'rotulo' posiciona por grid, e esta linha é pack
-    lbl_atribuido = tk.Label(pessoas_c, text="Atribuída a")
-    lbl_atribuido.pack(side="left", padx=(14, 6))
-    criar_balao(lbl_atribuido, lambda _evento: (
-        "De quem é a tarefa no OpenProject. É o filtro de 'o que é meu': quem ABRE\n"
-        "a tarefa costuma ser o suporte, não quem vai resolver."), tema)
-    atribuido_var = tk.StringVar(value=state.get("atribuido_ciclo", "") or TODOS)
-    atribuido_combo = ttk.Combobox(pessoas_c, textvariable=atribuido_var, width=24,
-                                   state="readonly")
-    atribuido_combo["values"] = [TODOS] + (
-        [state["atribuido_ciclo"]] if state.get("atribuido_ciclo") else [])
-    atribuido_combo.pack(side="left")
     rotulo(topo_c, "Branch de produção",
            "A versão que está em produção hoje (ex.: v2.2601).",
-           row=3, column=2, sticky="e", padx=(12, 6))
+           row=3, column=0, sticky="w", pady=2)
     prod_c_var = tk.StringVar(value=state.get("producao_ciclo", "") or state.get("producao", ""))
-    campo_prod_c = tk.Entry(topo_c, textvariable=prod_c_var, width=16)
-    campo_prod_c.grid(row=3, column=3, sticky="w")
+    campo_prod_c = tk.Entry(topo_c, textvariable=prod_c_var, width=26)
+    campo_prod_c.grid(row=3, column=1, sticky="w", pady=2)
     dica(campo_prod_c, prod_c_var, "release-2601")
 
     rotulo(topo_c, "Branch de homologação",
-           "A próxima versão (ex.: v2.2602). Vazio: a ferramenta trabalha com uma branch de\n"
-           "versão só, como antes.",
-           row=4, column=0, sticky="w", pady=2)
+           "A próxima versão (ex.: v2.2602). Tudo que está na produção é cobrado aqui,\n"
+           "qualquer que seja o tipo. Vazio: uma branch de versão só, como antes.",
+           row=3, column=2, sticky="e", padx=(12, 6))
     homo_c_var = tk.StringVar(value=state.get("homologacao", ""))
     campo_homo_c = tk.Entry(topo_c, textvariable=homo_c_var, width=26)
-    campo_homo_c.grid(row=4, column=1, sticky="w", pady=2)
+    campo_homo_c.grid(row=3, column=3, sticky="w")
     dica(campo_homo_c, homo_c_var, "release-2602 (vazio = não usa)")
 
-    rotulo(topo_c, "Parado após (dias)",
-           "Dias sem NENHUMA atualização no PR para ele ser marcado como PARADO.",
-           row=4, column=2, sticky="e", padx=(12, 6))
-    dias_parado_var = tk.StringVar(value=str(state.get("dias_parado", "7")))
-    tk.Entry(topo_c, textvariable=dias_parado_var, width=5).grid(row=4, column=3, sticky="w")
     rotulo(topo_c, "Conta do GitHub",
            "Qual credencial usar. 'automática pelo repositório' pergunta ao git usando o\n"
            "org/repo - é o que resolve máquina com mais de uma conta.",
-           row=5, column=0, sticky="w", pady=2)
+           row=4, column=0, sticky="w", pady=2)
     contas = [github_prs.AUTOMATICA, github_prs.PADRAO_GIT] + [
         u for _alvo, u in github_prs.contas_guardadas()]
     conta_var = tk.StringVar(value=state.get("conta", github_prs.AUTOMATICA))
     conta_combo = ttk.Combobox(topo_c, textvariable=conta_var, width=26, state="readonly",
                                values=contas)
-    conta_combo.grid(row=5, column=1, sticky="w", pady=2)
+    conta_combo.grid(row=4, column=1, sticky="w", pady=2)
     if conta_var.get() not in contas:
         conta_var.set(github_prs.AUTOMATICA)
+    rotulo(topo_c, "Parado após (dias)",
+           "Dias sem NENHUMA atualização no PR para ele ser marcado como PARADO.",
+           row=4, column=2, sticky="e", padx=(12, 6))
+    dias_parado_var = tk.StringVar(value=str(state.get("dias_parado", "7")))
+    tk.Entry(topo_c, textvariable=dias_parado_var, width=5).grid(row=4, column=3, sticky="w")
     rotulo_conta = tk.Label(topo_c, text="", fg=tema["ok"])
-    rotulo_conta.grid(row=5, column=2, columnspan=3, sticky="w", padx=(12, 0))
+    rotulo_conta.grid(row=4, column=4, sticky="w", padx=(12, 0))
 
 
     btns_c = tk.Frame(aba_ciclo, padx=10)
     btns_c.pack(fill="x")
     btn_carregar = tk.Button(btns_c, text="Carregar", width=14)
     btn_carregar.pack(side="left")
-    btn_tipos = tk.Button(btns_c, text="Tipos que exigem produção...", width=28)
-    btn_tipos.pack(side="left", padx=6)
-    btn_status = tk.Button(btns_c, text="Status que liberam merge...", width=26)
-    btn_status.pack(side="left")
     btn_abrir_wp = tk.Button(btns_c, text="Abrir tarefa / PR", width=16, state="disabled")
     btn_abrir_wp.pack(side="left", padx=6)
     btn_excel = tk.Button(btns_c, text="Exportar Excel...", width=16, state="disabled")
     btn_excel.pack(side="left")
 
-    # filtros sobre o resultado já carregado: trocar filtro não refaz consulta
+    # duas naturezas, duas linhas: REGRA muda a pendência e refaz a conta;
+    # FILTRO só esconde linha do resultado que já está carregado
+    regras_c = tk.Frame(aba_ciclo, padx=10)
+    regras_c.pack(fill="x", pady=(6, 0))
+    lbl_regras = tk.Label(regras_c, text="Regras:")
+    lbl_regras.pack(side="left")
+    criar_balao(lbl_regras, lambda _evento: (
+        "Mudam a PENDÊNCIA de cada tarefa e refazem a conta ao confirmar."), tema)
+    btn_tipos = tk.Button(regras_c, text="Tipos que exigem produção...", width=28)
+    btn_tipos.pack(side="left", padx=(6, 6))
+    btn_status = tk.Button(regras_c, text="Status que liberam merge...", width=26)
+    btn_status.pack(side="left")
+
     filtros_c = tk.Frame(aba_ciclo, padx=10, pady=4)
     filtros_c.pack(fill="x")
-    tk.Label(filtros_c, text="Filtrar:").pack(side="left")
-    btn_entrega = tk.Button(filtros_c, text="Entrega ao cliente...", width=26)
-    btn_entrega.pack(side="left", padx=(6, 6))
-    btn_versao = tk.Button(filtros_c, text="Versão pedida (ramos)...", width=26)
-    btn_versao.pack(side="left")
-    lbl_tipo = tk.Label(filtros_c, fg=tema["dica"], text="")
-    lbl_tipo.pack(side="left", padx=(8, 0))
+    lbl_filtrar = tk.Label(filtros_c, text="Filtrar:")
+    lbl_filtrar.pack(side="left")
+    criar_balao(lbl_filtrar, lambda _evento: (
+        "Só escondem linha, sem refazer consulta. Todos funcionam igual: caixas de\n"
+        "marcar, e NADA marcado quer dizer todos - nunca não mostra nada."), tema)
+    btn_atribuido = tk.Button(filtros_c, text="Atribuída a")
+    btn_atribuido.pack(side="left", padx=(6, 4))
+    btn_autor = tk.Button(filtros_c, text="Autor do PR")
+    btn_autor.pack(side="left", padx=(0, 4))
+    btn_tipo_f = tk.Button(filtros_c, text="Tipo")
+    btn_tipo_f.pack(side="left", padx=(0, 4))
+    btn_entrega = tk.Button(filtros_c, text="Entrega")
+    btn_entrega.pack(side="left", padx=(0, 4))
+    btn_versao = tk.Button(filtros_c, text="Versão pedida")
+    btn_versao.pack(side="left", padx=(0, 12))
+    btn_limpar = tk.Button(filtros_c, text="Limpar filtros", state="disabled")
+    btn_limpar.pack(side="left")
 
     def _lista_do_estado(chave):
         """Aceita a lista de hoje e o texto de uma versão anterior do estado."""
@@ -1030,11 +1024,14 @@ def main():
             return state["tipos_exigem"]
         return list(mod_ciclo.TIPOS_PADRAO)
 
-    def so_tipos_marcados():
-        """Se a lista mostra só os tipos que exigem produção. Desligado por
-        padrão: a regra de cobrança e o que aparece na tela são escolhas
-        separadas - quem configura a regra nem sempre quer esconder o resto."""
-        return bool(state.get("tipos_so_marcados"))
+    def marcados_atribuido():
+        return _lista_do_estado("atribuido_filtro")
+
+    def marcados_autor():
+        return _lista_do_estado("autor_filtro")
+
+    def marcados_tipo():
+        return _lista_do_estado("tipo_filtro")
 
     def marcados_entrega():
         return _lista_do_estado("entrega_filtro")
@@ -1042,15 +1039,29 @@ def main():
     def marcados_versao():
         return _lista_do_estado("versao_filtro")
 
+    # os cinco filtros de tela, na ordem da barra
+    FILTROS = (("atribuido_filtro", marcados_atribuido),
+               ("autor_filtro", marcados_autor),
+               ("tipo_filtro", marcados_tipo),
+               ("entrega_filtro", marcados_entrega),
+               ("versao_filtro", marcados_versao))
+
+    def filtros_ativos():
+        return [chave for chave, ler in FILTROS if ler()]
+
+    def _rotulo_filtro(nome, marcados, todos=TODOS):
+        texto = ", ".join(marcados) or todos
+        return "%s: %s" % (nome, texto if len(texto) <= 22 else texto[:21] + "…")
+
     def atualizar_botoes_filtro():
-        """O botão mostra o que está filtrando: caixa de diálogo esconde estado."""
-        entrega = marcados_entrega()
-        versoes = marcados_versao()
-        btn_entrega.config(text="Entrega ao cliente: %s" % (", ".join(entrega) or TODOS))
-        btn_versao.config(text="Versão pedida: %s" % (", ".join(versoes) or TODAS))
-        lbl_tipo.config(text=("Tipo: só %s" % ", ".join(tipos_exigem()))
-                        if so_tipos_marcados() and tipos_exigem() else "")
-    tk.Label(filtros_c, fg=tema["dica"], text=(
+        """Cada botão mostra o próprio valor: caixa de diálogo esconde estado."""
+        btn_atribuido.config(text=_rotulo_filtro("Atribuída a", marcados_atribuido()))
+        btn_autor.config(text=_rotulo_filtro("Autor do PR", marcados_autor()))
+        btn_tipo_f.config(text=_rotulo_filtro("Tipo", marcados_tipo()))
+        btn_entrega.config(text=_rotulo_filtro("Entrega", marcados_entrega()))
+        btn_versao.config(text=_rotulo_filtro("Versão pedida", marcados_versao(), TODAS))
+        btn_limpar.config(state="normal" if filtros_ativos() else "disabled")
+    tk.Label(regras_c, fg=tema["dica"], text=(
         "|   pare o mouse em cima de uma célula (ou do cabeçalho) para ver o que ela diz"
     )).pack(side="left", padx=(10, 0))
 
@@ -1228,33 +1239,13 @@ def main():
     }
 
     def linhas_filtradas():
-        """Filtros de tela: autor do PR, atribuição, tipo, entrega e versão pedida.
-
-        Todos sobre o resultado já carregado - trocar filtro não refaz consulta.
-        Lista de marcados vazia = filtro desligado, e não 'não mostra nada'.
+        """Os cinco filtros de tela, todos com a MESMA regra: lista de marcados
+        vazia = filtro desligado. A regra em si vive em ciclo.passa_nos_filtros,
+        onde dá para testar; aqui só se lê o que está marcado na barra.
         """
-        autor = autor_c_var.get()
-        atribuido = atribuido_var.get()
-        entrega = marcados_entrega()
-        versoes = marcados_versao()
-        tipos = ({mod_ciclo.sem_acento(t) for t in tipos_exigem()}
-                 if so_tipos_marcados() else set())
-        linhas = []
-        for linha in ciclo_cache["linhas"]:
-            if autor != TODOS and autor not in linha["autores"]:
-                continue
-            if atribuido != TODOS and atribuido != (linha.get("atribuido") or ""):
-                continue
-            if tipos and mod_ciclo.sem_acento(linha["tipo"]) not in tipos:
-                continue
-            if entrega and mod_ciclo.rotulo_entrega(linha) not in entrega:
-                continue
-            if versoes:
-                pedidas = linha["versoes"] or [mod_ciclo.SEM_VERSAO_PEDIDA]
-                if not any(v in versoes for v in pedidas):
-                    continue
-            linhas.append(linha)
-        return linhas
+        return [l for l in ciclo_cache["linhas"] if mod_ciclo.passa_nos_filtros(
+            l, marcados_atribuido(), marcados_autor(), marcados_tipo(),
+            marcados_entrega(), marcados_versao())]
 
     def render_ciclo():
         linhas = linhas_filtradas()
@@ -1272,19 +1263,28 @@ def main():
         contagem = {}
         for l in linhas:
             contagem[l["pendencia"]] = contagem.get(l["pendencia"], 0) + 1
-        resumo = ("%d tarefa(s): %d pode(m) mergear, %d sem PR de produção, %d falta(m) em "
+        total = len(ciclo_cache["linhas"])
+        ativos = filtros_ativos()
+        cabeca = ("%d de %d tarefa(s) na tela, %d filtro(s) ativo(s)"
+                  % (len(linhas), total, len(ativos))) if ativos else "%d tarefa(s)" % total
+        resumo = ("%s: %d pode(m) mergear, %d sem PR de produção, %d falta(m) em "
                   "outra versão, %d aguardando aprovação, %d parada(s)." % (
-                      len(linhas), contagem.get(mod_ciclo.MERGEAR, 0),
+                      cabeca, contagem.get(mod_ciclo.MERGEAR, 0),
                       contagem.get(mod_ciclo.SEM_PROD, 0), contagem.get(mod_ciclo.SEM_VERSAO, 0),
                       contagem.get(mod_ciclo.APROVAR, 0), contagem.get(mod_ciclo.PARADO, 0)))
-        status.config(text=resumo, fg=tema["texto"])
+        # filtro que esconde TUDO tem de gritar: foi assim que a tela disse
+        # "0 tarefa(s)" havendo 912, e ninguém tinha como desconfiar
+        if ativos and total and not linhas:
+            status.config(text=resumo + "  Clique em 'Limpar filtros'.", fg=tema["erro"])
+        else:
+            status.config(text=resumo, fg=tema["texto"])
         return resumo
 
 
     ligar_ordenacao(grid_c, colunas_c, titulos_c, ordem_ciclo, CHAVES_CICLO,
                     lambda: render_ciclo())
 
-    def escolher_varios(titulo, opcoes, marcados, extra=None):
+    def escolher_varios(titulo, opcoes, marcados):
         if not opcoes:
             messagebox.showinfo("Sem dados", "Clique em Carregar antes de escolher.", parent=root)
             return None
@@ -1304,11 +1304,6 @@ def main():
             var = tk.BooleanVar(value=mod_ciclo.sem_acento(opcao) in ja_marcados)
             escolhas[opcao] = var
             tk.Checkbutton(quadro, text=opcao, variable=var).pack(anchor="w")
-        # caixa extra do rodapé: pergunta separada, sobre a mesma lista
-        var_extra = tk.BooleanVar(value=bool(extra and extra.get("valor")))
-        if extra:
-            tk.Checkbutton(quadro, text=extra["texto"], variable=var_extra).pack(
-                anchor="w", pady=(10, 0))
         saida = {"ok": False}
 
         def confirmar():
@@ -1322,53 +1317,64 @@ def main():
         root.wait_window(janela)
         if not saida["ok"]:
             return None
-        escolhidos = [o for o, v in escolhas.items() if v.get()]
-        return (escolhidos, var_extra.get()) if extra else escolhidos
+        return [o for o, v in escolhas.items() if v.get()]
 
     def do_tipos():
-        resposta = escolher_varios(
-            "Tipos de tarefa que exigem chegar na produção:",
-            ciclo_cache["tipos"], tipos_exigem(),
-            extra={"texto": "Listar só as tarefas destes tipos",
-                   "valor": so_tipos_marcados()})
-        if resposta is None:
-            return
-        escolha, so_marcados = resposta
-        mudou_regra = escolha != tipos_exigem()
-        state["tipos_exigem"] = escolha
-        state["tipos_so_marcados"] = so_marcados
-        salvar()
-        atualizar_botoes_filtro()
-        if ciclo_cache["linhas"]:
-            # regra nova muda a pendência de cada linha; só a caixa de listar
-            # não muda nada do que já foi calculado - basta redesenhar
-            if mudou_regra:
-                do_carregar_ciclo()
-            else:
-                render_ciclo()
-
-    def do_filtro_entrega():
-        escolha = escolher_varios(
-            "Mostrar só as tarefas com 'Confirmar entrega ao cliente?' assim "
-            "-- nada marcado mostra todas:",
-            [mod_ciclo.ENTREGA_SIM, mod_ciclo.ENTREGA_NAO, mod_ciclo.ENTREGA_VAZIO],
-            marcados_entrega())
+        escolha = escolher_varios("Tipos de tarefa que exigem chegar na produção:",
+                                  ciclo_cache["tipos"], tipos_exigem())
         if escolha is None:
             return
-        state["entrega_filtro"] = escolha
+        state["tipos_exigem"] = escolha
+        salvar()
+        if ciclo_cache["linhas"]:
+            do_carregar_ciclo()
+
+    def _aplicar_filtro(chave, escolha):
+        """Todo filtro termina igual: guarda, atualiza o botão e redesenha."""
+        if escolha is None:
+            return
+        state[chave] = escolha
         salvar()
         atualizar_botoes_filtro()
         render_ciclo()
 
+    def do_filtro_atribuido():
+        _aplicar_filtro("atribuido_filtro", escolher_varios(
+            "Mostrar só as tarefas atribuídas a estas pessoas no OpenProject "
+            "-- nada marcado mostra todas:",
+            ciclo_cache.get("atribuidos", []), marcados_atribuido()))
+
+    def do_filtro_autor():
+        _aplicar_filtro("autor_filtro", escolher_varios(
+            "Mostrar só as tarefas com PR aberto por estas pessoas no GitHub "
+            "-- nada marcado mostra todas. Tarefa cujo PR já foi mergeado e "
+            "apagado não tem autor: marcar alguém aqui esconde todas elas:",
+            ciclo_cache.get("autores", []), marcados_autor()))
+
+    def do_filtro_tipo():
+        _aplicar_filtro("tipo_filtro", escolher_varios(
+            "Mostrar só as tarefas destes tipos -- nada marcado mostra todas. "
+            "Isto NÃO muda quem é cobrado por falta de PR de produção; isso é "
+            "em Regras, no botão 'Tipos que exigem produção':",
+            ciclo_cache["tipos"], marcados_tipo()))
+
+    def do_filtro_entrega():
+        _aplicar_filtro("entrega_filtro", escolher_varios(
+            "Mostrar só as tarefas com 'Confirmar entrega ao cliente?' assim "
+            "-- nada marcado mostra todas:",
+            [mod_ciclo.ENTREGA_SIM, mod_ciclo.ENTREGA_NAO, mod_ciclo.ENTREGA_VAZIO],
+            marcados_entrega()))
+
     def do_filtro_versao():
-        opcoes = list(ciclo_cache.get("versoes", [])) + [mod_ciclo.SEM_VERSAO_PEDIDA]
-        escolha = escolher_varios(
+        _aplicar_filtro("versao_filtro", escolher_varios(
             "Mostrar só as tarefas que pedem estas versões em 'ramos para "
             "disponibilização' -- nada marcado mostra todas:",
-            opcoes, marcados_versao())
-        if escolha is None:
-            return
-        state["versao_filtro"] = escolha
+            list(ciclo_cache.get("versoes", [])) + [mod_ciclo.SEM_VERSAO_PEDIDA],
+            marcados_versao()))
+
+    def do_limpar_filtros():
+        for chave, _ler in FILTROS:
+            state[chave] = []
         salvar()
         atualizar_botoes_filtro()
         render_ciclo()
@@ -1393,19 +1399,17 @@ def main():
         ciclo_cache["tipos"] = resultado_ciclo.get("tipos_vistos", [])
         ciclo_cache["status"] = resultado_ciclo.get("status_vistos", [])
         ciclo_cache["fechados"] = resultado_ciclo.get("status_fechados", [])
-        autores = resultado_ciclo.get("autores", [])
-        autor_c_combo["values"] = [TODOS] + autores
-        if autor_c_var.get() not in [TODOS] + autores:
-            autor_c_var.set(TODOS)
-        atribuidos = resultado_ciclo.get("atribuidos", [])
-        atribuido_combo["values"] = [TODOS] + atribuidos
-        if atribuido_var.get() not in [TODOS] + atribuidos:
-            eu_op = resultado_ciclo.get("usuario_op") or ""
-            atribuido_var.set(eu_op if eu_op in atribuidos else TODOS)
+        ciclo_cache["autores"] = resultado_ciclo.get("autores", [])
+        ciclo_cache["atribuidos"] = resultado_ciclo.get("atribuidos", [])
         versoes = resultado_ciclo.get("versoes_vistas", [])
         ciclo_cache["versoes"] = versoes
-        state["versao_filtro"] = [v for v in marcados_versao() if v in
-                                  versoes + [mod_ciclo.SEM_VERSAO_PEDIDA]]
+        # escolha guardada que não existe mais no resultado sai sozinha: filtro
+        # invisível escondendo linha é o que faz a tela parecer vazia sem motivo
+        for chave, existentes in (("atribuido_filtro", ciclo_cache["atribuidos"]),
+                                  ("autor_filtro", ciclo_cache["autores"]),
+                                  ("tipo_filtro", ciclo_cache["tipos"]),
+                                  ("versao_filtro", versoes + [mod_ciclo.SEM_VERSAO_PEDIDA])):
+            state[chave] = [v for v in _lista_do_estado(chave) if v in existentes]
         atualizar_botoes_filtro()
         log("")
         log(render_ciclo())
@@ -1444,15 +1448,13 @@ def main():
                 prs.extend(lote)
 
             tarefas = {}
-            usuario_op = ""
             url_op, projeto = separar_projeto(op_url_var.get())
             token = token_var.get().strip()
             if url_op and token:
                 log("")
                 log("--- OpenProject ---")
                 cliente = OpenProject(url_op, token)
-                usuario_op = cliente.eu()
-                log("  conectado como %s" % usuario_op)
+                log("  conectado como %s" % cliente.eu())
                 try:
                     fechados = set(cliente.status_fechados())
                     log("  status de concluída (isClosed): %s" % (", ".join(sorted(fechados)) or "-"))
@@ -1598,9 +1600,7 @@ def main():
                     "apagado não entra ---")
             resultado_ciclo["linhas"] = linhas
             resultado_ciclo["autores"] = sorted({p["autor"] for p in prs if p["autor"]})
-            resultado_ciclo["usuario"] = usuario
             resultado_ciclo["atribuidos"] = mod_ciclo.atribuidos_vistos(linhas)
-            resultado_ciclo["usuario_op"] = usuario_op
             resultado_ciclo["tipos_vistos"] = mod_ciclo.tipos_vistos(linhas)
             resultado_ciclo["status_vistos"] = sorted(
                 {l["status_wp"] for l in linhas if l["status_wp"] != "-"})
@@ -1663,8 +1663,10 @@ def main():
         log("Planilha gravada em %s (%d tarefa(s), %d linha(s) por branch)." % (
             caminho, len(tabela), len(mod_ciclo.linhas_por_branch(linhas))))
 
-    autor_c_combo.bind("<<ComboboxSelected>>", lambda _e: (salvar(), render_ciclo()))
-    atribuido_combo.bind("<<ComboboxSelected>>", lambda _e: (salvar(), render_ciclo()))
+    btn_atribuido.config(command=do_filtro_atribuido)
+    btn_autor.config(command=do_filtro_autor)
+    btn_tipo_f.config(command=do_filtro_tipo)
+    btn_limpar.config(command=do_limpar_filtros)
     btn_carregar.config(command=do_carregar_ciclo)
     btn_tipos.config(command=do_tipos)
     btn_status.config(command=do_status)
