@@ -155,7 +155,6 @@ Ela cruza duas fontes e não depende do `gh` CLI:
 | **SEM PR DE PRODUÇÃO** (vermelho) | a produção é obrigatória para essa tarefa e não há PR aberto para essa branch | abrir o backport (a aba git faz isso) |
 | **FALTA EM OUTRA VERSÃO** (vinho) | falta numa **outra** branch obrigatória — homologação, ou uma versão pedida no card | abrir o backport daquela versão |
 | **AGUARDA APROVAÇÃO** (azul) | existe PR aberto para uma branch de versão esperando revisão há N dias | cobrar revisão |
-| **FALTA A BUILD (X5)** (âmbar) | tarefa concluída, sem PR aberto, e o campo de build vazio | preencher a versão no card |
 | **PARADO** (laranja) | PR aberto sem nenhuma atualização há mais dias que o limite | decidir: retomar ou fechar |
 | **OK** (cinza) | nada a fazer pelo que dá para ver dos PRs abertos | — |
 
@@ -294,7 +293,7 @@ Na ordem em que aparecem na tela:
 | **Atribuída a** | de quem é a **tarefa** no OpenProject. É o filtro de "o que é meu": o suporte abre a tarefa (é o autor dela lá), mas quem responde é a pessoa atribuída — e nem sempre é quem abriu o PR. Depois da carga já vem em você, se você aparecer na lista. Sem OpenProject configurado a lista fica vazia e o filtro em `(todos)`. |
 | **Branch de produção** | contra qual branch o PR de produção é esperado (ex.: `release-2601`). Vazio, usa a da aba git. A comparação ignora maiúsculas. |
 | **Branch de homologação** | a próxima versão (ex.: `release-2602`). **Vazio, a ferramenta se comporta exatamente como antes**: uma branch de versão só. |
-| **Query salva (id)** | **opcional.** O número que aparece na URL do gerenciador como `?query_id=1234` — a visão já filtrada do seu time, para trazer também tarefas que não têm PR aberto (é o que permite pegar o caso *FALTA A BUILD*). As tarefas dos PRs são buscadas pelo número, independente dela. |
+| **Query salva (id)** | **opcional.** O número que aparece na URL do gerenciador como `?query_id=1234` — a visão já filtrada do seu time, para trazer também tarefas que não têm PR aberto. As tarefas dos PRs são buscadas pelo número, independente dela. |
 | **Parado após (dias)** | quantos dias sem **nenhuma** atualização no PR para ele ser marcado como PARADO. |
 | **Conta do GitHub** | qual credencial usar (veja abaixo). |
 

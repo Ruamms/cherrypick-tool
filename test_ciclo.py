@@ -198,11 +198,13 @@ class TestRegrasAntigas(unittest.TestCase):
         self.assertEqual(linhas[0]["pendencia"], ciclo.PARADO)
         self.assertEqual(linhas[0]["idade"], 27)
 
-    def test_falta_build_sem_pr_aberto(self):
-        linhas = self.montar([], {"104328": tarefa("Adaptativa", fechado=True)})
-        linha = uma(linhas, "104328")
-        self.assertEqual(linha["pendencia"], ciclo.SEM_BUILD)
-        self.assertEqual(linha["prs"], [])
+    def test_build_vazio_nao_e_pendencia_de_backport(self):
+        # a lista é de cherry-pick perdido; campo X5 vazio sai como contagem
+        ignoradas = {}
+        linhas = self.montar([], {"104328": tarefa("Adaptativa", fechado=True)},
+                             ignoradas=ignoradas)
+        self.assertEqual(linhas, [])
+        self.assertEqual(ignoradas["sem_build"], 0)
 
     def test_mergeado_vem_do_historico_local(self):
         linhas = self.montar([pr(7857, MAIN, "108241")],
@@ -237,11 +239,12 @@ class TestRegrasAntigas(unittest.TestCase):
 
 
 class TestMultiplasBranches(unittest.TestCase):
-    def montar(self, prs, tarefas, historico=None, exigem=("Corretiva", "Divida Tecnica")):
+    def montar(self, prs, tarefas, historico=None, exigem=("Corretiva", "Divida Tecnica"),
+               **kw):
         historico = historico or {MAIN: set(), PROD: set(), HOMO: set()}
         return ciclo.montar(prs, tarefas, PROD, MAIN, list(exigem), [],
                             dias_parado=7, hoje=HOJE, historico=historico,
-                            base_homologacao=HOMO)
+                            base_homologacao=HOMO, **kw)
 
     def test_corretiva_e_cobrada_nas_duas_versoes(self):
         """Item 6: 108692 corretiva, PR na 2601 aguardando, nada na 2602."""
@@ -297,12 +300,13 @@ class TestMultiplasBranches(unittest.TestCase):
     def test_mergeado_em_uma_e_faltando_na_outra(self):
         """Item 7: 2601 mergeado, 2602 sem PR -> pendência só na 2602.
 
-        Sem nenhum PR aberto a tarefa só entra pela regra do build vazio - e
-        mesmo por esse caminho ela tem de trazer a situação de cada branch.
+        Sem nenhum PR aberto a tarefa entra pelo histórico do clone - e por
+        esse caminho ela tem de trazer a situação de cada branch.
         """
         linhas = self.montar(
             [], {"108692": tarefa("Corretiva", fechado=True, build="")},
-            historico={MAIN: {"108692"}, PROD: {"108692"}, HOMO: set()})
+            historico={MAIN: {"108692"}, PROD: {"108692"}, HOMO: set()},
+            exigir_pr=False)
         linha = uma(linhas, "108692")
         self.assertEqual(situacao(linha, MAIN), ciclo.MERGEADO)
         self.assertEqual(situacao(linha, PROD), ciclo.MERGEADO)
@@ -461,11 +465,14 @@ class TestSemPrAberto(unittest.TestCase):
         self.assertEqual(linhas, [])
         self.assertEqual(ignoradas["nao_entregues"], 1)
 
-    def test_build_vazio_continua_valendo_no_modo_projeto(self):
+    def test_build_vazio_nao_entra_nem_no_modo_projeto(self):
+        ignoradas = {}
         linhas = self.montar(
             {"104328": tarefa("Adaptativa", fechado=True)},
-            {MAIN: {"104328"}, PROD: set(), HOMO: set()}, exigir_pr=False)
-        self.assertEqual(uma(linhas, "104328")["pendencia"], ciclo.SEM_BUILD)
+            {MAIN: {"104328"}, PROD: set(), HOMO: set()}, exigir_pr=False,
+            ignoradas=ignoradas)
+        self.assertEqual(linhas, [])
+        self.assertEqual(ignoradas["sem_build"], 1)
 
     def test_pr_aberto_de_outra_tarefa_nao_interfere(self):
         linhas = ciclo.montar(
@@ -728,9 +735,10 @@ class TestContratoDaLinha(unittest.TestCase):
         linhas = ciclo.montar(
             [pr(8030, PROD, "109866")],
             {"109866": tarefa("Adaptativa", entrega=True, ramos="2602"),
-             "104328": tarefa("Adaptativa", fechado=True)},
+             "104328": tarefa("Corretiva")},
             PROD, MAIN, ["Corretiva"], [], hoje=HOJE, base_homologacao=HOMO,
-            historico={MAIN: set(), PROD: set(), HOMO: set()})
+            historico={MAIN: {"104328"}, PROD: set(), HOMO: set()},
+            exigir_pr=False)
         self.assertEqual(len(linhas), 2)
         for linha in linhas:
             faltando = [c for c in self.CHAVES if c not in linha]

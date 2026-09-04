@@ -1273,11 +1273,10 @@ def main():
         for l in linhas:
             contagem[l["pendencia"]] = contagem.get(l["pendencia"], 0) + 1
         resumo = ("%d tarefa(s): %d pode(m) mergear, %d sem PR de produção, %d falta(m) em "
-                  "outra versão, %d aguardando aprovação, %d sem build, %d parada(s)." % (
+                  "outra versão, %d aguardando aprovação, %d parada(s)." % (
                       len(linhas), contagem.get(mod_ciclo.MERGEAR, 0),
                       contagem.get(mod_ciclo.SEM_PROD, 0), contagem.get(mod_ciclo.SEM_VERSAO, 0),
-                      contagem.get(mod_ciclo.APROVAR, 0),
-                      contagem.get(mod_ciclo.SEM_BUILD, 0), contagem.get(mod_ciclo.PARADO, 0)))
+                      contagem.get(mod_ciclo.APROVAR, 0), contagem.get(mod_ciclo.PARADO, 0)))
         status.config(text=resumo, fg=tema["texto"])
         return resumo
 
@@ -1586,6 +1585,10 @@ def main():
             if projeto:
                 log("--- modo projeto: %d tarefa(s) conferidas, com PR aberto ou sem ---"
                     % len(tarefas))
+                if ignoradas.get("sem_build"):
+                    log("  %d tarefa(s) concluída(s) sem PR aberto e com o campo de build "
+                        "(X5) vazio - o campo vazio, por si, não põe tarefa nesta lista."
+                        % ignoradas["sem_build"])
                 if ignoradas.get("nao_entregues"):
                     log("  %d tarefa(s) faltam numa branch de versão mas não estão nem na "
                         "principal nem na produção: são trabalho não entregue, não backport "

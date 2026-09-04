@@ -31,19 +31,17 @@ MERGEAR = "PODE MERGEAR"
 SEM_PROD = "SEM PR DE PRODUÇÃO"
 SEM_VERSAO = "FALTA EM OUTRA VERSÃO"
 APROVAR = "AGUARDA APROVAÇÃO"
-SEM_BUILD = "FALTA A BUILD (X5)"
 PARADO = "PARADO"
 OK = "OK"
 
 ORDEM_CICLO = {MERGEAR: 0, SEM_PROD: 1, SEM_VERSAO: 2, APROVAR: 3,
-               SEM_BUILD: 4, PARADO: 5, OK: 6}
+               PARADO: 4, OK: 5}
 
 CORES_CICLO = {
     MERGEAR: "#5ec269",
     SEM_PROD: "#ff6b6b",
     SEM_VERSAO: "#ff7fbf",
     APROVAR: "#6fa8ff",
-    SEM_BUILD: "#d9a441",
     PARADO: "#ffa657",
     OK: "#9aa0a6",
 }
@@ -53,7 +51,6 @@ LEGENDA_CICLO = (
     (SEM_PROD, "o tipo exige produção e não há PR aberto nem nada no histórico da branch"),
     (SEM_VERSAO, "falta em outra branch obrigatória (homologação ou versão pedida na tarefa)"),
     (APROVAR, "existe PR aberto para uma branch obrigatória esperando revisão há N dias"),
-    (SEM_BUILD, "tarefa concluída, sem PR aberto, e com o campo de build vazio"),
     (PARADO, "PR aberto sem nenhuma atualização há mais dias que o limite"),
     (OK, "nada a fazer pelo que dá para ver"),
 )
@@ -357,10 +354,10 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
     histórico: {nome_da_branch: set de números de tarefa}, None naquela branch
     quando não havia clone local para conferir.
 
-    exigir_pr=True é o comportamento antigo: tarefa sem PR aberto só aparece no
-    caso do build vazio. Com False - a URL do OpenProject aponta para um projeto
-    - toda tarefa do projeto é conferida contra o histórico das branches mesmo
-    sem PR aberto, que é o caso do PR já mergeado e apagado.
+    exigir_pr=True é o comportamento antigo: sem projeto na URL, só entra tarefa
+    com PR aberto. Com False - a URL do OpenProject aponta para um projeto -
+    toda tarefa do projeto é conferida contra o histórico das branches mesmo sem
+    PR aberto, que é o caso do PR já mergeado e apagado.
 
     ignoradas: dicionário opcional, preenchido com o que ficou de fora.
     """
@@ -451,9 +448,6 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             detalhe = "%s (há %d dias)" % (
                 ", ".join("%s: %s" % (l["nome"], l["situacao"]) for l in prs_em_versao),
                 idade_versao)
-        elif concluida and not prs_do_grupo and not build:
-            pendencia = SEM_BUILD
-            detalhe = "tarefa concluída e sem o campo de build preenchido"
         elif idade >= dias_parado:
             pendencia = PARADO
             detalhe = "sem atualização há %d dias" % idade
@@ -501,9 +495,9 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
     # radar de PR não vê nada, e quem responde "está na branch?" é o histórico
     # do git. Só entram se apontarem pendência, para a lista continuar sendo
     # lista de coisa para fazer.
-    sem_pr = 0
+    sem_pr = sem_build = 0
     for numero, dados in tarefas.items():
-        if numero in grupos:
+        if numero in grupos or exigir_pr:
             continue
         concluida = dados.get("fechado") or (
             sem_acento(dados.get("status", "")) in libera if libera else False)
@@ -524,13 +518,9 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
         na_principal = lado_principal is None or not lado_principal["pendente"]
         entregue = na_principal or na_producao
 
-        if exigir_pr:
-            # modo antigo (sem projeto na URL): só o caso do build vazio
-            if not falta_build:
-                continue
-            pendencia = SEM_BUILD
-            detalhe = "tarefa concluída e sem o campo de build preenchido"
-        elif faltando and entregue:
+        if falta_build:
+            sem_build += 1
+        if faltando and entregue:
             onde = "está na principal" if na_principal else "está na produção"
             if lado_prod is not None and lado_prod in faltando:
                 pendencia = SEM_PROD
@@ -539,9 +529,6 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
                 pendencia = SEM_VERSAO
                 detalhe = "%s e falta em %s, e não há PR aberto" % (onde, ", ".join(
                     l["nome"] for l in faltando))
-        elif falta_build:
-            pendencia = SEM_BUILD
-            detalhe = "tarefa concluída e sem o campo de build preenchido"
         else:
             if faltando:
                 sem_pr += 1
@@ -576,6 +563,7 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
     if ignoradas is not None:
         # sem silêncio: quem ficou de fora e por quê
         ignoradas["nao_entregues"] = sem_pr
+        ignoradas["sem_build"] = sem_build
 
     linhas.sort(key=lambda x: (ORDEM_CICLO.get(x["pendencia"], 9), -x["idade"]))
     return linhas
