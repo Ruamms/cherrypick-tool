@@ -289,7 +289,8 @@ Na ordem em que aparecem na tela:
 | **OpenProject** | URL da sua instância, ou de um **projeto** dela (`.../projects/meu-time`) — com projeto, a análise deixa de depender de PR aberto (veja acima). **Opcional**: sem ela a aba roda só com o GitHub e deduz o tipo do título do PR. |
 | **Tarefas dos últimos (dias)** | janela das tarefas do projeto. Vale **só** no modo projeto; no outro é ignorado. |
 | **Token da API** | token pessoal do OpenProject (*Minha conta → Tokens de acesso*), **nunca** a sua senha. O botão **Onde pegar o token** abre essa página. Guardado cifrado nesta máquina. |
-| **Autor** | filtra por quem abriu o PR; a lista é preenchida pela carga. `(todos)` mostra o time inteiro. |
+| **Autor do PR** | quem **abriu o PR** no GitHub (login); a lista é preenchida pela carga. `(todos)` mostra o time inteiro. |
+| **Atribuída a** | de quem é a **tarefa** no OpenProject. É o filtro de "o que é meu": o suporte abre a tarefa (é o autor dela lá), mas quem responde é a pessoa atribuída — e nem sempre é quem abriu o PR. Depois da carga já vem em você, se você aparecer na lista. Sem OpenProject configurado a lista fica vazia e o filtro em `(todos)`. |
 | **Branch de produção** | contra qual branch o PR de produção é esperado (ex.: `release-2601`). Vazio, usa a da aba git. A comparação ignora maiúsculas. |
 | **Branch de homologação** | a próxima versão (ex.: `release-2602`). **Vazio, a ferramenta se comporta exatamente como antes**: uma branch de versão só. |
 | **Query salva (id)** | **opcional.** O número que aparece na URL do gerenciador como `?query_id=1234` — a visão já filtrada do seu time, para trazer também tarefas que não têm PR aberto (é o que permite pegar o caso *FALTA A BUILD*). As tarefas dos PRs são buscadas pelo número, independente dela. |

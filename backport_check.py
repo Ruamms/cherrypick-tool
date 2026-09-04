@@ -658,6 +658,8 @@ def main():
             "query": query_var.get().strip(),
             "token_cifrado": _proteger(token_var.get().strip()),
             "autor_ciclo": "" if autor_c_var.get() == TODOS else autor_c_var.get(),
+            "atribuido_ciclo": ("" if atribuido_var.get() == TODOS
+                                else atribuido_var.get()),
             "dias_parado": dias_parado_var.get().strip() or "7",
             "conta": conta_var.get(),
             "producao_ciclo": prod_c_var.get().strip(),
@@ -929,11 +931,28 @@ def main():
     tk.Button(topo_c, text="Onde pegar o token", command=abrir_pagina_token).grid(
         row=2, column=2, columnspan=2, sticky="w", padx=(12, 0))
 
-    tk.Label(topo_c, text="Autor").grid(row=3, column=0, sticky="w", pady=2)
+    rotulo(topo_c, "Autor do PR",
+           "Quem ABRIU o PR no GitHub (login). Não é de quem é a tarefa: "
+           "o suporte abre a tarefa, outra pessoa abre o PR.",
+           row=3, column=0, sticky="w", pady=2)
+    pessoas_c = tk.Frame(topo_c)
+    pessoas_c.grid(row=3, column=1, sticky="w", pady=2)
     autor_c_var = tk.StringVar(value=state.get("autor_ciclo", "") or TODOS)
-    autor_c_combo = ttk.Combobox(topo_c, textvariable=autor_c_var, width=26, state="readonly")
+    autor_c_combo = ttk.Combobox(pessoas_c, textvariable=autor_c_var, width=24, state="readonly")
     autor_c_combo["values"] = [TODOS] + ([state["autor_ciclo"]] if state.get("autor_ciclo") else [])
-    autor_c_combo.grid(row=3, column=1, sticky="w", pady=2)
+    autor_c_combo.pack(side="left")
+    # rótulo aqui é criado na mão: 'rotulo' posiciona por grid, e esta linha é pack
+    lbl_atribuido = tk.Label(pessoas_c, text="Atribuída a")
+    lbl_atribuido.pack(side="left", padx=(14, 6))
+    criar_balao(lbl_atribuido, lambda _evento: (
+        "De quem é a tarefa no OpenProject. É o filtro de 'o que é meu': quem ABRE\n"
+        "a tarefa costuma ser o suporte, não quem vai resolver."), tema)
+    atribuido_var = tk.StringVar(value=state.get("atribuido_ciclo", "") or TODOS)
+    atribuido_combo = ttk.Combobox(pessoas_c, textvariable=atribuido_var, width=24,
+                                   state="readonly")
+    atribuido_combo["values"] = [TODOS] + (
+        [state["atribuido_ciclo"]] if state.get("atribuido_ciclo") else [])
+    atribuido_combo.pack(side="left")
     rotulo(topo_c, "Branch de produção",
            "A versão que está em produção hoje (ex.: v2.2601).",
            row=3, column=2, sticky="e", padx=(12, 6))
@@ -1210,12 +1229,13 @@ def main():
     }
 
     def linhas_filtradas():
-        """Filtros de tela: autor, tipo, entrega ao cliente e versão pedida.
+        """Filtros de tela: autor do PR, atribuição, tipo, entrega e versão pedida.
 
         Todos sobre o resultado já carregado - trocar filtro não refaz consulta.
         Lista de marcados vazia = filtro desligado, e não 'não mostra nada'.
         """
         autor = autor_c_var.get()
+        atribuido = atribuido_var.get()
         entrega = marcados_entrega()
         versoes = marcados_versao()
         tipos = ({mod_ciclo.sem_acento(t) for t in tipos_exigem()}
@@ -1223,6 +1243,8 @@ def main():
         linhas = []
         for linha in ciclo_cache["linhas"]:
             if autor != TODOS and autor not in linha["autores"]:
+                continue
+            if atribuido != TODOS and atribuido != (linha.get("atribuido") or ""):
                 continue
             if tipos and mod_ciclo.sem_acento(linha["tipo"]) not in tipos:
                 continue
@@ -1378,6 +1400,11 @@ def main():
         if autor_c_var.get() not in [TODOS] + autores:
             autor_c_var.set(resultado_ciclo.get("usuario") if
                             resultado_ciclo.get("usuario") in autores else TODOS)
+        atribuidos = resultado_ciclo.get("atribuidos", [])
+        atribuido_combo["values"] = [TODOS] + atribuidos
+        if atribuido_var.get() not in [TODOS] + atribuidos:
+            eu_op = resultado_ciclo.get("usuario_op") or ""
+            atribuido_var.set(eu_op if eu_op in atribuidos else TODOS)
         versoes = resultado_ciclo.get("versoes_vistas", [])
         ciclo_cache["versoes"] = versoes
         state["versao_filtro"] = [v for v in marcados_versao() if v in
@@ -1420,13 +1447,15 @@ def main():
                 prs.extend(lote)
 
             tarefas = {}
+            usuario_op = ""
             url_op, projeto = separar_projeto(op_url_var.get())
             token = token_var.get().strip()
             if url_op and token:
                 log("")
                 log("--- OpenProject ---")
                 cliente = OpenProject(url_op, token)
-                log("  conectado como %s" % cliente.eu())
+                usuario_op = cliente.eu()
+                log("  conectado como %s" % usuario_op)
                 try:
                     fechados = set(cliente.status_fechados())
                     log("  status de concluída (isClosed): %s" % (", ".join(sorted(fechados)) or "-"))
@@ -1470,6 +1499,7 @@ def main():
                     situacao = titulo_do_link(wp, "status")
                     tarefas[str(wp.get("id"))] = {
                         "tipo": titulo_do_link(wp, "type"),
+                        "atribuido": titulo_do_link(wp, "assignee"),
                         "status": situacao,
                         "fechado": situacao in fechados,
                         "assunto": wp.get("subject", ""),
@@ -1568,6 +1598,8 @@ def main():
             resultado_ciclo["linhas"] = linhas
             resultado_ciclo["autores"] = sorted({p["autor"] for p in prs if p["autor"]})
             resultado_ciclo["usuario"] = usuario
+            resultado_ciclo["atribuidos"] = mod_ciclo.atribuidos_vistos(linhas)
+            resultado_ciclo["usuario_op"] = usuario_op
             resultado_ciclo["tipos_vistos"] = mod_ciclo.tipos_vistos(linhas)
             resultado_ciclo["status_vistos"] = sorted(
                 {l["status_wp"] for l in linhas if l["status_wp"] != "-"})
@@ -1631,6 +1663,7 @@ def main():
             caminho, len(tabela), len(mod_ciclo.linhas_por_branch(linhas))))
 
     autor_c_combo.bind("<<ComboboxSelected>>", lambda _e: (salvar(), render_ciclo()))
+    atribuido_combo.bind("<<ComboboxSelected>>", lambda _e: (salvar(), render_ciclo()))
     btn_carregar.config(command=do_carregar_ciclo)
     btn_tipos.config(command=do_tipos)
     btn_status.config(command=do_status)

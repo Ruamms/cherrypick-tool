@@ -33,9 +33,10 @@ def pr(numero, base, tarefa="", atualizado="2026-08-29", autor="ruan",
 
 
 def tarefa(tipo, status="Desenvolvido", fechado=False, build="", entrega=None,
-           ramos="", assunto="Assunto da tarefa"):
+           ramos="", assunto="Assunto da tarefa", atribuido=""):
     return {"tipo": tipo, "status": status, "fechado": fechado, "assunto": assunto,
-            "build": build, "entrega": entrega, "ramos": ramos}
+            "build": build, "entrega": entrega, "ramos": ramos,
+            "atribuido": atribuido}
 
 
 def uma(linhas, numero):
@@ -615,6 +616,39 @@ class TestChavesSemAcento(unittest.TestCase):
             self.assertFalse(ciclo.verdadeiro(valor), valor)
 
 
+class TestAtribuicao(unittest.TestCase):
+    """Quem ABRE a tarefa costuma ser o suporte; quem responde por ela é a
+    pessoa atribuída. São coisas diferentes do autor do PR, que é do GitHub."""
+
+    def test_chega_na_linha_com_pr_aberto(self):
+        linhas = ciclo.montar(
+            [pr(8006, MAIN, "108692", autor="quem-abriu-o-pr")],
+            {"108692": tarefa("Corretiva", atribuido="Ruan Sampaio")},
+            PROD, MAIN, ["Corretiva"], [], hoje=HOJE,
+            historico={MAIN: set(), PROD: set()})
+        linha = uma(linhas, "108692")
+        self.assertEqual(linha["atribuido"], "Ruan Sampaio")
+        self.assertEqual(linha["autores"], ["quem-abriu-o-pr"])
+
+    def test_chega_na_linha_sem_pr_aberto(self):
+        linhas = ciclo.montar(
+            [], {"108692": tarefa("Corretiva", atribuido="Ruan Sampaio")},
+            PROD, MAIN, ["Corretiva"], [], hoje=HOJE, base_homologacao=HOMO,
+            historico={MAIN: {"108692"}, PROD: set(), HOMO: set()}, exigir_pr=False)
+        self.assertEqual(uma(linhas, "108692")["atribuido"], "Ruan Sampaio")
+
+    def test_tarefa_que_a_carga_nao_achou_fica_com_vazio(self):
+        linhas = ciclo.montar([pr(8010, MAIN, "999999")], {}, PROD, MAIN, [], [],
+                              hoje=HOJE, historico={MAIN: set(), PROD: set()})
+        self.assertEqual(uma(linhas, "999999")["atribuido"], "")
+
+    def test_lista_da_tela_nao_repete_nem_traz_vazio(self):
+        linhas = [{"atribuido": "Ruan Sampaio"}, {"atribuido": "Ruan Sampaio"},
+                  {"atribuido": ""}, {"atribuido": "Outra Pessoa"}, {}]
+        self.assertEqual(ciclo.atribuidos_vistos(linhas),
+                         ["Outra Pessoa", "Ruan Sampaio"])
+
+
 class TestContratoDaLinha(unittest.TestCase):
     """A grade e a exportação leem estas chaves de toda linha, nos dois caminhos
     que produzem linha: agrupada por PR aberto e a que entra pelo build vazio."""
@@ -622,7 +656,8 @@ class TestContratoDaLinha(unittest.TestCase):
     CHAVES = ("pendencia", "pendente_em", "tarefa", "tipo", "status_wp", "entrega",
               "tem_entrega", "versoes", "ramos", "obrigatorias", "branches",
               "pr_principal", "pr_producao", "pr_homologacao", "pr_outros",
-              "build", "idade", "assunto", "detalhe", "autores", "prs", "urls")
+              "build", "idade", "assunto", "detalhe", "autores", "atribuido",
+              "prs", "urls")
 
     def test_as_duas_origens_de_linha_tem_todas_as_chaves(self):
         linhas = ciclo.montar(

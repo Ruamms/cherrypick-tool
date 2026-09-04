@@ -152,6 +152,13 @@ def tipo_do_titulo(titulo):
     return ""
 
 
+def atribuidos_vistos(linhas):
+    """Pessoas atribuídas encontradas, uma vez cada. Só vem do gerenciador:
+    tarefa que a carga não achou (ou instância sem OpenProject) fica de fora."""
+    return sorted({(l.get("atribuido") or "").strip() for l in linhas
+                   if (l.get("atribuido") or "").strip()})
+
+
 def tipos_vistos(linhas):
     """Tipos encontrados, um por tipo - sem repetir por causa da caixa alta.
 
@@ -462,6 +469,7 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             "pr_homologacao": lado_homo["situacao"] if lado_homo else "",
             "pr_outros": ", ".join("#%s(%s)" % (p["numero"], p["base"])
                                    for l in lados_extra for p in l["prs"]),
+            "atribuido": dados.get("atribuido", "") or "",
             "autores": sorted({p["autor"] for p in prs_do_grupo}),
             "idade": idade,
             "pendencia": pendencia,
@@ -541,6 +549,7 @@ def montar(prs, tarefas, base_producao, base_principal, tipos_exigem,
             "pr_homologacao": (por_nome[base_homologacao]["situacao"]
                                if base_homologacao in por_nome else ""),
             "pr_outros": "",
+            "atribuido": dados.get("atribuido", "") or "",
             "autores": [], "idade": 0,
             "pendencia": pendencia,
             "detalhe": detalhe,
